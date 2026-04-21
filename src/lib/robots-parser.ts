@@ -1,7 +1,7 @@
 // src/lib/robots-parser.ts
 
 import axios from 'axios';
-import { CrawlConfig, RobotsTxt } from '../types';
+import { CrawlConfig, RobotsTxt } from '@/types';
 import { Logger } from './logger';
 
 const logger = new Logger();
@@ -9,11 +9,14 @@ const logger = new Logger();
 /**
  * Fetch and parse robots.txt
  */
-export async function fetchRobotsTxt(siteUrl: string, config: CrawlConfig): Promise<RobotsTxt | null> {
+export async function fetchRobotsTxt(
+  siteUrl: string,
+  config: CrawlConfig
+): Promise<RobotsTxt | null> {
   try {
     const baseUrl = new URL(siteUrl);
     const robotsUrl = `${baseUrl.protocol}//${baseUrl.host}/robots.txt`;
-    
+
     const response = await axios.get(robotsUrl, {
       timeout: config.requestTimeout,
       headers: {
@@ -39,10 +42,10 @@ function parseRobotsTxt(content: string): RobotsTxt {
   };
 
   const lines = content.split('\n');
-  
+
   for (const line of lines) {
     const trimmed = line.trim();
-    
+
     if (trimmed.startsWith('#') || !trimmed) {
       continue;
     }

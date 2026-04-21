@@ -2,11 +2,11 @@
 
 import axios from 'axios';
 import * as path from 'path';
-import { CrawlConfig, PageData } from '../types';
+import { CrawlConfig, PageData } from '@/types';
 import { DelayManager } from './delay-manager';
 import { StateManager } from './state-manager';
 import { Logger } from './logger';
-import { urlToFilePath, decodeUrl } from './url-utils';
+import { urlToFilePath } from './url-utils';
 import { saveFile } from './file-utils';
 import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
 
@@ -39,10 +39,10 @@ export class WebCrawler {
     await this.loadSitemap();
 
     let pageCount = 0;
-    
+
     while (true) {
       const nextUrl = this.stateManager.getNextFromQueue();
-      
+
       if (!nextUrl) {
         logger.info('No more URLs in queue');
         break;
@@ -63,7 +63,7 @@ export class WebCrawler {
 
       try {
         logger.info(`Crawling (${pageCount + 1}): ${nextUrl}`);
-        
+
         const response = await axios.get(nextUrl, {
           timeout: this.config.requestTimeout,
           headers: {
@@ -83,32 +83,34 @@ export class WebCrawler {
 
         // Mark as completed
         this.stateManager.markCompleted(nextUrl, pageData);
-        
+
         pageCount++;
         this.delayManager.recordSuccess();
-        
+
         // Save state periodically
         if (pageCount % 10 === 0) {
           await this.stateManager.saveState();
           const stats = this.stateManager.getStats();
-          logger.info(`Progress: ${stats.completed} completed, ${stats.failed} failed, ${stats.queued} queued`);
+          logger.info(
+            `Progress: ${stats.completed} completed, ${stats.failed} failed, ${stats.queued} queued`
+          );
         }
 
         await this.delayManager.wait();
       } catch (error) {
         logger.error(`Failed to crawl ${nextUrl}:`, error);
         this.delayManager.recordError();
-        
+
         // Retry with exponential backoff
         const retries = this.config.maxRetries;
         let success = false;
-        
+
         for (let attempt = 0; attempt < retries; attempt++) {
           const retryDelay = this.delayManager.getRetryDelay(attempt);
           logger.info(`Retrying (${attempt + 1}/${retries}) after ${retryDelay}ms: ${nextUrl}`);
-          
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-          
+
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+
           try {
             const response = await axios.get(nextUrl, {
               timeout: this.config.requestTimeout,
@@ -126,7 +128,7 @@ export class WebCrawler {
 
             await this.savePage(nextUrl, response.data);
             this.stateManager.markCompleted(nextUrl, pageData);
-            
+
             pageCount++;
             this.delayManager.recordSuccess();
             success = true;
@@ -156,7 +158,7 @@ export class WebCrawler {
   private async loadSitemap(): Promise<void> {
     const fs = await import('fs');
     const sitemapPath = path.join(this.config.stateDir, 'sitemap.json');
-    
+
     if (!fs.existsSync(sitemapPath)) {
       logger.warn('Sitemap not found. Run scan first.');
       return;
@@ -165,10 +167,10 @@ export class WebCrawler {
     try {
       const content = await fs.promises.readFile(sitemapPath, 'utf-8');
       const sitemap = JSON.parse(content);
-      
+
       const urls = sitemap.urls.map((p: PageData) => p.url);
       this.stateManager.addToQueue(urls);
-      
+
       logger.info(`Loaded ${urls.length} URLs from sitemap`);
     } catch (error) {
       logger.error('Failed to load sitemap:', error);

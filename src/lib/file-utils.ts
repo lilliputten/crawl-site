@@ -49,7 +49,7 @@ export async function deleteFile(filePath: string): Promise<void> {
  */
 export async function listFiles(dirPath: string): Promise<string[]> {
   const files: string[] = [];
-  
+
   if (!fs.existsSync(dirPath)) {
     return files;
   }

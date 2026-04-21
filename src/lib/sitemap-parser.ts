@@ -3,7 +3,7 @@
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
 import { parseStringPromise } from 'xml2js';
-import { CrawlConfig, PageData } from '../types';
+import { CrawlConfig, PageData } from '@/types';
 import { Logger } from './logger';
 import { decodeUrl, normalizeUrl } from './url-utils';
 
@@ -18,7 +18,10 @@ export interface SitemapEntry {
 /**
  * Parse sitemap URLs from XML or HTML format
  */
-export async function parseSitemapUrls(sitemapUrl: string, config: CrawlConfig): Promise<PageData[]> {
+export async function parseSitemapUrls(
+  sitemapUrl: string,
+  config: CrawlConfig
+): Promise<PageData[]> {
   try {
     const response = await axios.get(sitemapUrl, {
       timeout: config.requestTimeout,
@@ -27,8 +30,8 @@ export async function parseSitemapUrls(sitemapUrl: string, config: CrawlConfig):
       },
     });
 
-    const contentType = response.headers['content-type'] || '';
-    
+    const contentType = String(response.headers['content-type'] || '');
+
     if (contentType.includes('xml') || sitemapUrl.endsWith('.xml')) {
       return await parseXmlSitemap(response.data);
     } else if (contentType.includes('html') || sitemapUrl.endsWith('.html')) {
@@ -104,14 +107,14 @@ async function parseHtmlSitemap(htmlContent: string, baseUrl: string): Promise<P
 
     // Find all links in the HTML
     const links = document.querySelectorAll('a[href]');
-    
+
     links.forEach((link) => {
       const href = link.getAttribute('href');
       if (href) {
         try {
           const fullUrl = new URL(href, baseUrl).toString();
           const title = link.textContent?.trim() || '';
-          
+
           pages.push({
             url: normalizeUrl(decodeUrl(fullUrl)),
             title,
@@ -135,8 +138,8 @@ async function parseHtmlSitemap(htmlContent: string, baseUrl: string): Promise<P
 async function fetchAndParseSitemap(sitemapUrl: string): Promise<PageData[]> {
   try {
     const response = await axios.get(sitemapUrl, { timeout: 30000 });
-    const contentType = response.headers['content-type'] || '';
-    
+    const contentType = String(response.headers['content-type'] || '');
+
     if (contentType.includes('xml') || sitemapUrl.endsWith('.xml')) {
       return await parseXmlSitemap(response.data);
     } else {

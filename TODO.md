@@ -1,6 +1,7 @@
 # TODO - Site Crawler Project Progress
 
 ## Project Setup
+
 - [x] Initialize project structure
 - [x] Create package.json with dependencies
 - [x] Configure TypeScript
@@ -9,6 +10,7 @@
 - [x] Create .gitignore
 
 ## Core Implementation
+
 - [x] Create configuration management (.env support)
 - [x] Implement URL utilities and helpers
 - [x] Create sitemap parser (XML and HTML)
@@ -19,20 +21,32 @@
 - [x] Implement delay management with exponential backoff
 
 ## Documentation
+
 - [x] Create README.md
 - [x] Create CHANGELOG.md
 - [x] Add inline code documentation
+- [x] Update README with multiple sitemap URL examples
+- [x] Document all command-line arguments and environment variables
+- [x] Add development workflow examples
 
 ## Testing & Validation
-- [ ] Install dependencies with pnpm
+
+- [x] Install dependencies with pnpm
+- [x] Fix TypeScript compilation errors
+- [x] Run linters (tsc + oxlint) - all clean
+- [x] Remove redundant jest config files
+- [x] Fix test errors - all tests passing
+- [x] Configure absolute imports with @/\* path mapping
+- [x] Update Jest configuration with moduleNameMapper
+- [x] Add comprehensive code quality commands (check-all, format, etc.)
 - [ ] Test scan functionality
 - [ ] Test crawl functionality
 - [ ] Verify Cyrillic URL handling
 - [ ] Test resume capability
 - [ ] Test error handling and delays
-- [ ] Run unit tests
+- [x] Run unit tests (8/8 passing)
 
 ## Final Steps
-- [ ] Run linters
-- [ ] Fix any linting issues
+
+- [x] Build project successfully
 - [ ] Final review and cleanup

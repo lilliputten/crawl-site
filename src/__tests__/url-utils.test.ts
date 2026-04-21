@@ -1,6 +1,6 @@
-import { decodeUrl, normalizeUrl, urlToFilePath } from '../lib/url-utils';
-import { DelayManager } from '../lib/delay-manager';
-import { CrawlConfig } from '../types';
+import { decodeUrl, normalizeUrl } from '@/lib/url-utils';
+import { DelayManager } from '@/lib/delay-manager';
+import { CrawlConfig } from '@/types';
 
 describe('URL Utils', () => {
   describe('decodeUrl', () => {
@@ -57,7 +57,7 @@ describe('DelayManager', () => {
     const manager = new DelayManager(mockConfig);
     manager.recordError();
     expect(manager.getCurrentDelay()).toBe(2000);
-    
+
     manager.recordError();
     expect(manager.getCurrentDelay()).toBe(4000);
   });

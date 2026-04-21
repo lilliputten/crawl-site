@@ -1,7 +1,7 @@
 // src/lib/state-manager.ts
 
 import * as path from 'path';
-import { CrawlConfig, CrawlState, PageData } from '../types';
+import { CrawlConfig, CrawlState, PageData } from '@/types';
 import { ensureDir, saveFile, readFile, fileExists } from './file-utils';
 import { Logger } from './logger';
 
@@ -28,12 +28,12 @@ export class StateManager {
    */
   async initialize(): Promise<void> {
     await ensureDir(this.stateDir);
-    
+
     if (await fileExists(this.stateFile)) {
       try {
         const content = await readFile(this.stateFile);
         const data = JSON.parse(content);
-        
+
         // Convert arrays back to Maps
         this.state = {
           queued: data.queued || [],
@@ -41,8 +41,10 @@ export class StateManager {
           failed: new Map(data.failed || []),
           lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),
         };
-        
-        logger.info(`Loaded existing state: ${this.state.completed.size} completed, ${this.state.failed.size} failed, ${this.state.queued.length} queued`);
+
+        logger.info(
+          `Loaded existing state: ${this.state.completed.size} completed, ${this.state.failed.size} failed, ${this.state.queued.length} queued`
+        );
       } catch (error) {
         logger.warn('Failed to load state file, starting fresh:', error);
       }

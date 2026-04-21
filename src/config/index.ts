@@ -3,7 +3,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
-import { CrawlConfig } from '../types';
+import { CrawlConfig } from '@/types';
 
 // Load .env files
 const envFile = path.resolve(process.cwd(), '.env');
@@ -23,7 +23,7 @@ export function parseCommandLineArgs(): Partial<CrawlConfig> {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    
+
     if (arg.startsWith('--site-url=')) {
       config.siteUrl = arg.split('=')[1];
     } else if (arg.startsWith('--sitemap-urls=')) {
@@ -72,7 +72,7 @@ export function loadConfig(): CrawlConfig {
 
   // Override with command line arguments
   const cliConfig = parseCommandLineArgs();
-  
+
   const finalConfig = { ...envConfig, ...cliConfig } as CrawlConfig;
 
   // Validate required fields

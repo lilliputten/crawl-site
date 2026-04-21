@@ -1,6 +1,6 @@
 // src/lib/delay-manager.ts
 
-import { CrawlConfig } from '../types';
+import { CrawlConfig } from '@/types';
 
 export class DelayManager {
   private consecutiveErrors: number = 0;
@@ -54,7 +54,7 @@ export class DelayManager {
    * Sleep for specified milliseconds
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

@@ -1,13 +1,12 @@
 // src/lib/site-scanner.ts
 
 import axios from 'axios';
-import { CrawlConfig, PageData, SiteMap } from '../types';
+import { CrawlConfig, PageData, SiteMap } from '@/types';
 import { parseSitemapUrls, extractTitle } from './sitemap-parser';
 import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
 import { DelayManager } from './delay-manager';
-import { StateManager } from './state-manager';
 import { Logger } from './logger';
-import { normalizeUrl, decodeUrl, isValidUrl, isSameDomain } from './url-utils';
+import { normalizeUrl, decodeUrl, isSameDomain } from './url-utils';
 import { JSDOM } from 'jsdom';
 
 const logger = new Logger();
@@ -15,14 +14,12 @@ const logger = new Logger();
 export class SiteScanner {
   private config: CrawlConfig;
   private delayManager: DelayManager;
-  private stateManager: StateManager;
   private visitedUrls: Set<string> = new Set();
   private pages: PageData[] = [];
 
-  constructor(config: CrawlConfig, delayManager: DelayManager, stateManager: StateManager) {
+  constructor(config: CrawlConfig, delayManager: DelayManager) {
     this.config = config;
     this.delayManager = delayManager;
-    this.stateManager = stateManager;
   }
 
   /**
@@ -60,7 +57,7 @@ export class SiteScanner {
     await this.saveSiteMap(siteMap);
 
     logger.info(`Scan complete. Found ${this.pages.length} pages`);
-    
+
     return siteMap;
   }
 
@@ -72,7 +69,7 @@ export class SiteScanner {
       try {
         logger.info(`Parsing sitemap: ${sitemapUrl}`);
         const pages = await parseSitemapUrls(sitemapUrl, this.config);
-        
+
         for (const page of pages) {
           if (isSameDomain(page.url, this.config.siteUrl) && !this.visitedUrls.has(page.url)) {
             if (!this.config.respectRobotsTxt || isUrlAllowed(page.url, null)) {
@@ -81,7 +78,7 @@ export class SiteScanner {
             }
           }
         }
-        
+
         await this.delayManager.wait();
       } catch (error) {
         logger.warn(`Failed to parse sitemap ${sitemapUrl}:`, error);
@@ -93,11 +90,11 @@ export class SiteScanner {
    * Crawl site to discover URLs
    */
   private async crawlForUrls(startUrl: string): Promise<void> {
-    const queue: string[] = [startURL];
-    
+    const queue: string[] = [startUrl];
+
     while (queue.length > 0) {
       const url = queue.shift()!;
-      
+
       if (this.visitedUrls.has(url)) {
         continue;
       }
@@ -121,7 +118,7 @@ export class SiteScanner {
 
         const title = extractTitle(response.data);
         const normalizedUrl = normalizeUrl(decodeUrl(url));
-        
+
         this.pages.push({
           url: normalizedUrl,
           title,
@@ -129,9 +126,9 @@ export class SiteScanner {
 
         // Extract links from the page
         const links = this.extractLinks(response.data, url);
-        
+
         for (const link of links) {
-          if (!this.visitedUrls.has(link) && isSameDomain(link, startURL)) {
+          if (!this.visitedUrls.has(link) && isSameDomain(link, startUrl)) {
             if (!this.config.respectRobotsTxt || isUrlAllowed(link, null)) {
               queue.push(link);
             }
@@ -158,14 +155,14 @@ export class SiteScanner {
       const links: string[] = [];
 
       const elements = document.querySelectorAll('a[href]');
-      
+
       elements.forEach((element) => {
         const href = element.getAttribute('href');
         if (href) {
           try {
             // Handle relative URLs
             const fullUrl = new URL(href, baseUrl).toString();
-            
+
             // Only include URLs from the same domain
             if (isSameDomain(fullUrl, baseUrl)) {
               const normalized = normalizeUrl(decodeUrl(fullUrl));
@@ -190,17 +187,17 @@ export class SiteScanner {
   private async saveSiteMap(siteMap: SiteMap): Promise<void> {
     const fs = await import('fs');
     const path = await import('path');
-    
+
     const sitemapPath = path.join(this.config.stateDir, 'sitemap.json');
     const data = {
       ...siteMap,
-      urls: siteMap.urls.map(p => ({
+      urls: siteMap.urls.map((p) => ({
         ...p,
         lastModified: p.lastModified?.toISOString(),
       })),
       lastUpdated: siteMap.lastUpdated.toISOString(),
     };
-    
+
     await fs.promises.writeFile(sitemapPath, JSON.stringify(data, null, 2), 'utf-8');
     logger.info(`Sitemap saved to ${sitemapPath}`);
   }

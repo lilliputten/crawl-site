@@ -1,0 +1,8 @@
+# Prettier ignore file
+node_modules/
+dist/
+crawl-data/
+crawled-content/
+coverage/
+*.log
+.env.local

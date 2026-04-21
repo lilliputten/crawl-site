@@ -9,8 +9,10 @@ export function decodeUrl(url: string): string {
   try {
     const urlObj = new URL(url);
     // Decode pathname to handle Cyrillic and other unicode characters
-    urlObj.pathname = decodeURIComponent(urlObj.pathname);
-    return urlObj.toString();
+    const decodedPathname = decodeURIComponent(urlObj.pathname);
+
+    // Reconstruct URL with decoded pathname
+    return `${urlObj.protocol}//${urlObj.host}${decodedPathname}${urlObj.search}${urlObj.hash}`;
   } catch (error) {
     // If URL parsing fails, try to decode the string directly
     try {
@@ -32,7 +34,7 @@ export function normalizeUrl(url: string): string {
     if (pathname !== '/' && pathname.endsWith('/')) {
       pathname = pathname.slice(0, -1);
     }
-    
+
     return `${urlObj.protocol}//${urlObj.host}${pathname}`;
   } catch (error) {
     return url;
@@ -57,13 +59,13 @@ export function isValidUrl(url: string): boolean {
 export function urlToFilePath(url: string, baseUrl: string, destDir: string): string {
   const urlObj = new URL(url);
   const baseObj = new URL(baseUrl);
-  
+
   // Get relative path
   let relativePath = urlObj.pathname;
   if (relativePath.startsWith('/')) {
     relativePath = relativePath.substring(1);
   }
-  
+
   // Handle index files
   if (relativePath === '' || relativePath.endsWith('/')) {
     relativePath += 'index.html';
@@ -71,10 +73,10 @@ export function urlToFilePath(url: string, baseUrl: string, destDir: string): st
     // Add .html extension for files without extension
     relativePath += '.html';
   }
-  
+
   // Decode any encoded characters (especially Cyrillic)
   relativePath = decodeURIComponent(relativePath);
-  
+
   return path.join(destDir, baseObj.hostname, relativePath);
 }
 

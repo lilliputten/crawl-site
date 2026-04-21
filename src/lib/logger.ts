@@ -1,7 +1,5 @@
 // src/lib/logger.ts
 
-import { CrawlConfig } from '../types';
-
 const LOG_LEVELS = {
   debug: 0,
   info: 1,
@@ -41,7 +39,9 @@ export class Logger {
   }
 
   private shouldLog(level: string): boolean {
-    return LOG_LEVELS[level as keyof typeof LOG_LEVELS] >= 
-           LOG_LEVELS[this.logLevel as keyof typeof LOG_LEVELS];
+    return (
+      LOG_LEVELS[level as keyof typeof LOG_LEVELS] >=
+      LOG_LEVELS[this.logLevel as keyof typeof LOG_LEVELS]
+    );
   }
 }

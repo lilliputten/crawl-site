@@ -1,5 +1,3 @@
-// src/types/index.ts
-
 export interface CrawlConfig {
   siteUrl: string;
   sitemapUrls: string[];
@@ -14,6 +12,9 @@ export interface CrawlConfig {
   maxPages: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
 }
+
+// Keep CrawlerConfig as an alias for backward compatibility
+export type CrawlerConfig = CrawlConfig;
 
 export interface PageData {
   url: string;
@@ -42,5 +43,9 @@ export interface RobotsTxt {
   sitemaps: string[];
 }
 
-// Re-export all types from the main types file
-export * from '../types';
+export interface SitemapEntry {
+  url: string;
+  title?: string;
+  lastModified?: Date;
+  priority?: number;
+}

@@ -26,8 +26,13 @@ pnpm install
 Copy `.env` to `.env.local` and modify as needed:
 
 ```env
+# Single sitemap URL
 SITE_URL=https://example.com
 SITEMAP_URLS=["https://example.com/sitemap.xml"]
+
+# Multiple sitemap URLs (JSON array format)
+# SITEMAP_URLS=["https://example.com/sitemap1.xml","https://example.com/sitemap2.xml","https://example.com/blog/sitemap.xml"]
+
 CRAWL_DELAY=1000
 MAX_RETRIES=3
 RETRY_DELAY_BASE=2000
@@ -40,16 +45,38 @@ MAX_PAGES=0
 LOG_LEVEL=info
 ```
 
+**Example with multiple sitemaps in .env.local:**
+
+```env
+SITE_URL=https://example.com
+SITEMAP_URLS=["https://example.com/sitemap-main.xml","https://example.com/sitemap-products.xml","https://example.com/sitemap-blog.xml"]
+CRAWL_DELAY=1500
+DEST=./output
+```
+
 ### Command-Line Arguments
 
 All environment variables can be overridden via command-line arguments:
 
 ```bash
-pnpm scan --site-url=https://example.com --crawl-delay=2000
+# Single sitemap URL
+pnpm scan --site-url=https://example.com --sitemap-urls='["https://example.com/sitemap.xml"]'
+
+# Multiple sitemap URLs (use JSON array string)
+pnpm scan --site-url=https://example.com --sitemap-urls='["https://example.com/sitemap1.xml","https://example.com/sitemap2.xml"]'
+
+# Complex multi-sitemap example
+pnpm scan \
+  --site-url=https://mysite.com \
+  --sitemap-urls='["https://mysite.com/sitemap-index.xml","https://mysite.com/products/sitemap.xml","https://mysite.com/blog/sitemap.xml"]' \
+  --crawl-delay=2000
+
+# Crawl with custom settings
 pnpm crawl --dest=./output --max-pages=100
 ```
 
 Available arguments:
+
 - `--site-url=` - Target website URL
 - `--sitemap-urls=` - JSON array of sitemap URLs
 - `--crawl-delay=` - Delay between requests (ms)
@@ -65,39 +92,72 @@ Available arguments:
 
 ## Usage
 
-### 1. Scan a Site
+### Quick Start (No Build Required)
 
-Discover all URLs on a website:
+The project uses `tsx` to run TypeScript directly without compilation:
 
 ```bash
-pnpm scan
+# Basic usage
+pnpm scan    # Scan site structure (runs TypeScript source)
+pnpm crawl   # Crawl and download pages (runs TypeScript source)
+pnpm start   # Run both scan and crawl sequentially
+
+# With custom arguments
+pnpm scan --site-url=https://example.com --crawl-delay=2000
+pnpm crawl --dest=./output --max-pages=100
 ```
 
-This will:
-- Read sitemaps if provided
-- Crawl the site to discover URLs
-- Save a sitemap.json file with all found URLs and titles
+### Development Mode
 
-### 2. Crawl a Site
-
-Download all pages from the scanned site:
+For automatic reloading during development:
 
 ```bash
-pnpm crawl
+pnpm dev     # Watch mode for scan script
 ```
 
-This will:
-- Load the sitemap from the scan phase
-- Download each page's HTML content
-- Save files mirroring the original site structure
-- Maintain state for resuming if interrupted
+### Production Mode (Compiled JavaScript)
 
-### 3. Clean
-
-Remove all generated data:
+After building, you can run the compiled JavaScript:
 
 ```bash
-pnpm clean
+pnpm build         # Compile TypeScript to JavaScript
+pnpm scan-build    # Run compiled scan.js from dist/
+pnpm crawl-build   # Run compiled crawl.js from dist/
+pnpm start-build   # Build and run both scripts
+```
+
+### Code Quality & Formatting
+
+The project includes comprehensive code quality tools:
+
+```bash
+# Type checking with pretty output
+pnpm check-types   # tsc --pretty --noEmit
+
+# Linting
+pnpm lint          # Run oxlint
+pnpm lint-fix      # Auto-fix lint issues
+
+# Code formatting (Prettier)
+pnpm format        # Auto-format all source files
+pnpm format-check  # Check formatting without changes
+
+# Comprehensive checks (recommended before commits)
+pnpm check-all      # Run all checks (types + lint + format + tests)
+pnpm check-all-fix  # Run all checks with auto-fixes
+```
+
+### Testing
+
+```bash
+pnpm test          # Run Jest tests
+pnpm test-watch    # Watch mode for tests
+```
+
+### Cleanup
+
+```bash
+pnpm clean         # Remove dist/, crawl-data/, crawled-content/
 ```
 
 ## Project Structure
@@ -130,24 +190,65 @@ crawl-site/
 
 ## Development
 
-### Build
+### Running TypeScript Directly (Recommended for Development)
+
+The project uses `tsx` for fast TypeScript execution without compilation:
 
 ```bash
-pnpm build
+pnpm scan          # Run scan.ts directly with tsx
+pnpm crawl         # Run crawl.ts directly with tsx
+pnpm dev           # Run with file watching (auto-reload)
 ```
 
-### Linting
+**Benefits of tsx:**
+
+- No build step required - run TypeScript immediately
+- Faster development cycle
+- Automatic ESM/CJS compatibility
+- Better error messages with source maps
+
+### Build Process (Optional)
+
+For production deployment, you can compile to JavaScript:
 
 ```bash
-pnpm lint       # Check for issues
-pnpm lint:fix   # Auto-fix issues
+pnpm build         # Compile TypeScript → dist/
+pnpm clean         # Remove dist/, crawl-data/, crawled-content/
 ```
+
+### Code Quality & Linting
+
+The project includes comprehensive code quality checks:
+
+```bash
+# Type checking
+pnpm check-types   # TypeScript type checking with pretty output
+
+# Linting
+pnpm lint          # Run oxlint for code style issues
+pnpm lint-fix      # Auto-fix linting issues
+
+# Code formatting (Prettier)
+pnpm format        # Format code with Prettier
+pnpm format-check  # Check formatting without modifying
+
+# Comprehensive checks (recommended before commits)
+pnpm check-all      # Run all checks (types + lint + format + tests)
+pnpm check-all-fix  # Run all checks and auto-fix issues
+```
+
+**Code Quality Tools:**
+
+- **TypeScript** (`tsc --pretty --noEmit`) - Static type checking
+- **oxlint** - Fast linter for JavaScript/TypeScript
+- **Prettier** - Consistent code formatting
+- **Jest** - Unit testing framework
 
 ### Testing
 
 ```bash
-pnpm test
-pnpm test:watch
+pnpm test          # Run Jest tests
+pnpm test-watch    # Watch mode for tests
 ```
 
 ## How It Works
@@ -179,11 +280,13 @@ pnpm test:watch
 ### Cyrillic URL Support
 
 URLs with Cyrillic characters are decoded and saved with proper Unicode characters instead of percent-encoded format:
+
 - `/услуги/` instead of `/%D1%83%D1%81%D0%BB%D1%83%D0%B3%D0%B8/`
 
 ### Exponential Backoff
 
 When errors occur, delays increase exponentially:
+
 - First attempt: base delay
 - Second attempt: base delay × 2
 - Third attempt: base delay × 4
