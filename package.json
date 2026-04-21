@@ -1,0 +1,48 @@
+{
+  "name": "crawl-site",
+  "version": "0.1.0",
+  "description": "A TypeScript-based website crawler and scanner with resume capability",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist && rimraf crawl-data && rimraf crawled-content",
+    "scan": "ts-node src/scripts/scan.ts",
+    "crawl": "ts-node src/scripts/crawl.ts",
+    "start": "npm run scan && npm run crawl",
+    "lint": "oxlint src && tsc --noEmit",
+    "lint:fix": "oxlint src --fix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "dev": "ts-node-dev --respawn src/scripts/scan.ts"
+  },
+  "keywords": [
+    "crawler",
+    "scraper",
+    "sitemap",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.10.6",
+    "@types/xml2js": "^0.4.14",
+    "@types/jsdom": "^21.1.6",
+    "@types/cheerio": "^0.22.35",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3",
+    "oxlint": "^0.0.22",
+    "rimraf": "^5.0.5"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "jsdom": "^23.0.1",
+    "xml2js": "^0.6.2",
+    "cheerio": "^1.0.0-rc.12",
+    "robots-parser": "^3.0.1"
+  }
+}
