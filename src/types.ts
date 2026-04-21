@@ -30,10 +30,19 @@ export interface SiteMap {
   lastUpdated: Date;
 }
 
+export interface ScanResult {
+  siteMap: SiteMap;
+  internalLinks: string[];
+  brokenLinks: string[];
+  externalLinks: string[];
+}
+
 export interface CrawlState {
   queued: string[];
   completed: Map<string, PageData>;
   failed: Map<string, string>;
+  brokenLinks: string[]; // Internal links that returned errors
+  externalLinks: Set<string>; // All external links found
   lastProcessed: Date;
 }
 

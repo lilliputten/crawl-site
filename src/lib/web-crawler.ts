@@ -168,10 +168,33 @@ export class WebCrawler {
       const content = await fs.promises.readFile(sitemapPath, 'utf-8');
       const sitemap = JSON.parse(content);
 
-      const urls = sitemap.urls.map((p: PageData) => p.url);
-      this.stateManager.addToQueue(urls);
+      // Filter URLs to only include those from the same domain
+      const siteDomain = new URL(this.config.siteUrl).host;
+      const allUrls = sitemap.urls.map((p: PageData) => p.url);
+      const sameDomainUrls = allUrls.filter((url: string) => {
+        try {
+          const urlDomain = new URL(url).host;
+          return urlDomain === siteDomain;
+        } catch {
+          logger.warn(`Invalid URL in sitemap: ${url}`);
+          return false;
+        }
+      });
 
-      logger.info(`Loaded ${urls.length} URLs from sitemap`);
+      if (sameDomainUrls.length < allUrls.length) {
+        logger.info(
+          `Filtered out ${allUrls.length - sameDomainUrls.length} external URL(s) from sitemap`
+        );
+      }
+
+      if (sameDomainUrls.length > 0) {
+        this.stateManager.addToQueue(sameDomainUrls);
+        logger.info(`Loaded ${sameDomainUrls.length} URLs from sitemap`);
+      } else {
+        logger.warn('No same-domain URLs found in sitemap. Starting from index page.');
+        // Add the site's root URL to start crawling
+        this.stateManager.addToQueue([this.config.siteUrl]);
+      }
     } catch (error) {
       logger.error('Failed to load sitemap:', error);
     }

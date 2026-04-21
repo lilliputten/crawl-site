@@ -19,6 +19,8 @@ export class StateManager {
       queued: [],
       completed: new Map(),
       failed: new Map(),
+      brokenLinks: [],
+      externalLinks: new Set(),
       lastProcessed: new Date(),
     };
   }
@@ -34,11 +36,13 @@ export class StateManager {
         const content = await readFile(this.stateFile);
         const data = JSON.parse(content);
 
-        // Convert arrays back to Maps
+        // Convert arrays back to Maps and Sets
         this.state = {
           queued: data.queued || [],
           completed: new Map(data.completed || []),
           failed: new Map(data.failed || []),
+          brokenLinks: data.brokenLinks || [],
+          externalLinks: new Set(data.externalLinks || []),
           lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),
         };
 
@@ -58,11 +62,13 @@ export class StateManager {
    */
   async saveState(): Promise<void> {
     try {
-      // Convert Maps to arrays for JSON serialization
+      // Convert Maps and Sets to arrays for JSON serialization
       const data = {
         queued: this.state.queued,
         completed: Array.from(this.state.completed.entries()),
         failed: Array.from(this.state.failed.entries()),
+        brokenLinks: this.state.brokenLinks,
+        externalLinks: Array.from(this.state.externalLinks),
         lastProcessed: this.state.lastProcessed.toISOString(),
       };
 
@@ -129,12 +135,51 @@ export class StateManager {
   /**
    * Get statistics
    */
-  getStats(): { queued: number; completed: number; failed: number } {
+  getStats(): {
+    queued: number;
+    completed: number;
+    failed: number;
+    brokenLinks: number;
+    externalLinks: number;
+  } {
     return {
       queued: this.state.queued.length,
       completed: this.state.completed.size,
       failed: this.state.failed.size,
+      brokenLinks: this.state.brokenLinks.length,
+      externalLinks: this.state.externalLinks.size,
     };
+  }
+
+  /**
+   * Add a broken internal link
+   */
+  addBrokenLink(url: string): void {
+    if (!this.state.brokenLinks.includes(url)) {
+      this.state.brokenLinks.push(url);
+      logger.warn(`Broken link detected: ${url}`);
+    }
+  }
+
+  /**
+   * Add an external link
+   */
+  addExternalLink(url: string): void {
+    this.state.externalLinks.add(url);
+  }
+
+  /**
+   * Get all broken links
+   */
+  getBrokenLinks(): string[] {
+    return [...this.state.brokenLinks];
+  }
+
+  /**
+   * Get all external links
+   */
+  getExternalLinks(): string[] {
+    return Array.from(this.state.externalLinks);
   }
 
   /**
@@ -159,6 +204,8 @@ export class StateManager {
       queued: [],
       completed: new Map(),
       failed: new Map(),
+      brokenLinks: [],
+      externalLinks: new Set(),
       lastProcessed: new Date(),
     };
     await this.saveState();

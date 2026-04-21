@@ -16,6 +16,9 @@ export class SiteScanner {
   private delayManager: DelayManager;
   private visitedUrls: Set<string> = new Set();
   private pages: PageData[] = [];
+  private internalLinks: Set<string> = new Set();
+  private brokenLinks: Set<string> = new Set();
+  private externalLinks: Set<string> = new Set();
 
   constructor(config: CrawlConfig, delayManager: DelayManager) {
     this.config = config;
@@ -23,7 +26,7 @@ export class SiteScanner {
   }
 
   /**
-   * Scan the site and build a complete sitemap
+   * Scan the site and build a complete sitemap with link tracking
    */
   async scan(): Promise<SiteMap> {
     logger.info(`Starting scan of ${this.config.siteUrl}`);
@@ -34,21 +37,44 @@ export class SiteScanner {
       robotsTxt = await fetchRobotsTxt(this.config.siteUrl, this.config);
       if (robotsTxt) {
         logger.info(`Found ${robotsTxt.sitemaps.length} sitemaps in robots.txt`);
-        // Add sitemaps from robots.txt to our list
-        this.config.sitemapUrls = [...new Set([...this.config.sitemapUrls, ...robotsTxt.sitemaps])];
+
+        // Filter sitemaps to only include those from the same domain
+        const siteDomain = new URL(this.config.siteUrl).host;
+        const sameDomainSitemaps = robotsTxt.sitemaps.filter((sitemapUrl) => {
+          try {
+            const sitemapDomain = new URL(sitemapUrl).host;
+            return sitemapDomain === siteDomain;
+          } catch {
+            logger.warn(`Invalid sitemap URL in robots.txt: ${sitemapUrl}`);
+            return false;
+          }
+        });
+
+        if (sameDomainSitemaps.length < robotsTxt.sitemaps.length) {
+          logger.info(
+            `Filtered out ${robotsTxt.sitemaps.length - sameDomainSitemaps.length} external sitemap(s)`
+          );
+        }
+
+        // Add same-domain sitemaps from robots.txt to our list
+        this.config.sitemapUrls = [...new Set([...this.config.sitemapUrls, ...sameDomainSitemaps])];
       }
     }
 
     // Try to parse provided sitemaps
+    let sitemapParsed = false;
     if (this.config.sitemapUrls.length > 0) {
       await this.parseSitemaps();
-    } else {
-      // No sitemaps provided, try to discover by crawling
-      logger.info('No sitemaps provided, will discover URLs by crawling');
+      sitemapParsed = this.pages.length > 0;
+    }
+
+    // If no URLs found from sitemaps, discover by crawling
+    if (!sitemapParsed) {
+      logger.info('No URLs found from sitemaps, will discover URLs by crawling');
       await this.crawlForUrls(this.config.siteUrl);
     }
 
-    // Save sitemap
+    // Save sitemap (only if we have URLs)
     const siteMap: SiteMap = {
       urls: this.pages,
       lastUpdated: new Date(),
@@ -56,7 +82,13 @@ export class SiteScanner {
 
     await this.saveSiteMap(siteMap);
 
+    // Save link reports
+    await this.saveLinkReports();
+
     logger.info(`Scan complete. Found ${this.pages.length} pages`);
+    logger.info(
+      `Links summary: ${this.internalLinks.size} internal, ${this.brokenLinks.size} broken, ${this.externalLinks.size} external`
+    );
 
     return siteMap;
   }
@@ -125,20 +157,27 @@ export class SiteScanner {
         });
 
         // Extract links from the page
-        const links = this.extractLinks(response.data, url);
+        const { internal, external } = this.extractLinks(response.data, url);
 
-        for (const link of links) {
-          if (!this.visitedUrls.has(link) && isSameDomain(link, startUrl)) {
+        for (const link of internal) {
+          if (!this.visitedUrls.has(link)) {
             if (!this.config.respectRobotsTxt || isUrlAllowed(link, null)) {
               queue.push(link);
             }
           }
         }
 
+        for (const link of external) {
+          this.externalLinks.add(link);
+        }
+
         await this.delayManager.wait();
         this.delayManager.recordSuccess();
       } catch (error) {
         logger.warn(`Failed to scan ${url}:`, error);
+        // Track as broken link
+        const normalizedUrl = normalizeUrl(decodeUrl(url));
+        this.brokenLinks.add(normalizedUrl);
         this.delayManager.recordError();
         await this.delayManager.wait();
       }
@@ -146,13 +185,14 @@ export class SiteScanner {
   }
 
   /**
-   * Extract all links from HTML content
+   * Extract all links from HTML content and categorize them
    */
-  private extractLinks(html: string, baseUrl: string): string[] {
+  private extractLinks(html: string, baseUrl: string): { internal: string[]; external: string[] } {
     try {
       const dom = new JSDOM(html);
       const document = dom.window.document;
-      const links: string[] = [];
+      const internalLinks: string[] = [];
+      const externalLinks: string[] = [];
 
       const elements = document.querySelectorAll('a[href]');
 
@@ -162,11 +202,15 @@ export class SiteScanner {
           try {
             // Handle relative URLs
             const fullUrl = new URL(href, baseUrl).toString();
+            const normalized = normalizeUrl(decodeUrl(fullUrl));
 
-            // Only include URLs from the same domain
+            // Categorize as internal or external
             if (isSameDomain(fullUrl, baseUrl)) {
-              const normalized = normalizeUrl(decodeUrl(fullUrl));
-              links.push(normalized);
+              internalLinks.push(normalized);
+              this.internalLinks.add(normalized);
+            } else {
+              externalLinks.push(normalized);
+              this.externalLinks.add(normalized);
             }
           } catch {
             // Skip invalid URLs
@@ -174,19 +218,29 @@ export class SiteScanner {
         }
       });
 
-      return links;
+      return { internal: internalLinks, external: externalLinks };
     } catch (error) {
       logger.error('Failed to extract links:', error);
-      return [];
+      return { internal: [], external: [] };
     }
   }
 
   /**
-   * Save sitemap to file
+   * Save sitemap to file (only if we have URLs)
    */
   private async saveSiteMap(siteMap: SiteMap): Promise<void> {
     const fs = await import('fs');
     const path = await import('path');
+    const { ensureDir } = await import('./file-utils');
+
+    // Only save if we have URLs
+    if (siteMap.urls.length === 0) {
+      logger.info('No URLs to save in sitemap');
+      return;
+    }
+
+    // Ensure state directory exists
+    await ensureDir(this.config.stateDir);
 
     const sitemapPath = path.join(this.config.stateDir, 'sitemap.json');
     const data = {
@@ -199,6 +253,55 @@ export class SiteScanner {
     };
 
     await fs.promises.writeFile(sitemapPath, JSON.stringify(data, null, 2), 'utf-8');
-    logger.info(`Sitemap saved to ${sitemapPath}`);
+    logger.info(`Sitemap saved to ${sitemapPath} (${siteMap.urls.length} URLs)`);
+  }
+
+  /**
+   * Save link reports (internal, broken, external)
+   */
+  private async saveLinkReports(): Promise<void> {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { ensureDir } = await import('./file-utils');
+
+    // Ensure state directory exists
+    await ensureDir(this.config.stateDir);
+
+    // Save internal links
+    if (this.internalLinks.size > 0) {
+      const internalLinksPath = path.join(this.config.stateDir, 'internal-links.json');
+      await fs.promises.writeFile(
+        internalLinksPath,
+        JSON.stringify(Array.from(this.internalLinks).sort(), null, 2),
+        'utf-8'
+      );
+      logger.info(
+        `Internal links saved to ${internalLinksPath} (${this.internalLinks.size} links)`
+      );
+    }
+
+    // Save broken links
+    if (this.brokenLinks.size > 0) {
+      const brokenLinksPath = path.join(this.config.stateDir, 'broken-links.json');
+      await fs.promises.writeFile(
+        brokenLinksPath,
+        JSON.stringify(Array.from(this.brokenLinks).sort(), null, 2),
+        'utf-8'
+      );
+      logger.warn(`Broken links saved to ${brokenLinksPath} (${this.brokenLinks.size} links)`);
+    }
+
+    // Save external links
+    if (this.externalLinks.size > 0) {
+      const externalLinksPath = path.join(this.config.stateDir, 'external-links.json');
+      await fs.promises.writeFile(
+        externalLinksPath,
+        JSON.stringify(Array.from(this.externalLinks).sort(), null, 2),
+        'utf-8'
+      );
+      logger.info(
+        `External links saved to ${externalLinksPath} (${this.externalLinks.size} links)`
+      );
+    }
   }
 }
