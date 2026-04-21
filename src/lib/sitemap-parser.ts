@@ -6,6 +6,7 @@ import { parseStringPromise } from 'xml2js';
 import { CrawlConfig, PageData } from '@/types';
 import { Logger } from './logger';
 import { decodeUrl, normalizeUrl } from './url-utils';
+import { formatAxiosError } from './error-utils';
 
 const logger = new Logger();
 
@@ -45,7 +46,7 @@ export async function parseSitemapUrls(
       }
     }
   } catch (error) {
-    logger.error(`Failed to parse sitemap ${sitemapUrl}:`, error);
+    logger.error(`Failed to parse sitemap ${sitemapUrl}: ${formatAxiosError(error, sitemapUrl)}`);
     throw error;
   }
 }
@@ -91,7 +92,9 @@ async function parseXmlSitemap(xmlContent: string): Promise<PageData[]> {
 
     return pages;
   } catch (error) {
-    logger.error('Failed to parse XML sitemap:', error);
+    logger.error(
+      `Failed to parse XML sitemap: ${error instanceof Error ? error.message : String(error)}`
+    );
     throw error;
   }
 }
@@ -127,7 +130,9 @@ async function parseHtmlSitemap(htmlContent: string, baseUrl: string): Promise<P
 
     return pages;
   } catch (error) {
-    logger.error('Failed to parse HTML sitemap:', error);
+    logger.error(
+      `Failed to parse HTML sitemap: ${error instanceof Error ? error.message : String(error)}`
+    );
     throw error;
   }
 }

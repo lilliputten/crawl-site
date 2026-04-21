@@ -3,6 +3,7 @@
 import axios from 'axios';
 import { CrawlConfig, RobotsTxt } from '@/types';
 import { Logger } from './logger';
+import { formatAxiosError } from './error-utils';
 
 const logger = new Logger();
 
@@ -26,7 +27,7 @@ export async function fetchRobotsTxt(
 
     return parseRobotsTxt(response.data);
   } catch (error) {
-    logger.warn('Failed to fetch robots.txt:', error);
+    logger.warn(`Failed to fetch robots.txt: ${formatAxiosError(error)}`);
     return null;
   }
 }

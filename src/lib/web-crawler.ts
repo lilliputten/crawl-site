@@ -9,6 +9,7 @@ import { Logger } from './logger';
 import { urlToFilePath } from './url-utils';
 import { saveFile } from './file-utils';
 import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
+import { formatAxiosError } from './error-utils';
 
 const logger = new Logger();
 
@@ -98,7 +99,7 @@ export class WebCrawler {
 
         await this.delayManager.wait();
       } catch (error) {
-        logger.error(`Failed to crawl ${nextUrl}:`, error);
+        logger.error(`Failed to crawl ${nextUrl}:`, formatAxiosError(error));
         this.delayManager.recordError();
 
         // Retry with exponential backoff
@@ -196,7 +197,9 @@ export class WebCrawler {
         this.stateManager.addToQueue([this.config.siteUrl]);
       }
     } catch (error) {
-      logger.error('Failed to load sitemap:', error);
+      logger.error(
+        `Failed to load sitemap: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

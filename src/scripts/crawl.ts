@@ -34,7 +34,7 @@ async function main() {
 
     logger.info('=== Crawl Complete ===');
   } catch (error) {
-    logger.error('Crawl failed:', error);
+    logger.error(`Crawl failed: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
 }

@@ -7,6 +7,7 @@ import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
 import { DelayManager } from './delay-manager';
 import { Logger } from './logger';
 import { normalizeUrl, decodeUrl, isSameDomain } from './url-utils';
+import { formatAxiosError } from './error-utils';
 import { JSDOM } from 'jsdom';
 
 const logger = new Logger();
@@ -113,7 +114,9 @@ export class SiteScanner {
 
         await this.delayManager.wait();
       } catch (error) {
-        logger.warn(`Failed to parse sitemap ${sitemapUrl}:`, error);
+        logger.warn(
+          `Failed to parse sitemap ${sitemapUrl}: ${formatAxiosError(error, sitemapUrl)}`
+        );
       }
     }
   }
@@ -174,7 +177,7 @@ export class SiteScanner {
         await this.delayManager.wait();
         this.delayManager.recordSuccess();
       } catch (error) {
-        logger.warn(`Failed to scan ${url}:`, error);
+        logger.warn(`Failed to scan ${url}:`, formatAxiosError(error));
         // Track as broken link
         const normalizedUrl = normalizeUrl(decodeUrl(url));
         this.brokenLinks.add(normalizedUrl);
@@ -220,7 +223,9 @@ export class SiteScanner {
 
       return { internal: internalLinks, external: externalLinks };
     } catch (error) {
-      logger.error('Failed to extract links:', error);
+      logger.error(
+        `Failed to extract links: ${error instanceof Error ? error.message : String(error)}`
+      );
       return { internal: [], external: [] };
     }
   }

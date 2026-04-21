@@ -4,6 +4,7 @@ import * as path from 'path';
 import { CrawlConfig, CrawlState, PageData } from '@/types';
 import { ensureDir, saveFile, readFile, fileExists } from './file-utils';
 import { Logger } from './logger';
+// import { formatError } from './error-formatter'; // TODO: Add error formatting utility if needed
 
 const logger = new Logger();
 
@@ -75,7 +76,9 @@ export class StateManager {
       await saveFile(this.stateFile, JSON.stringify(data, null, 2));
       logger.debug('State saved successfully');
     } catch (error) {
-      logger.error('Failed to save state:', error);
+      logger.error(
+        `Failed to save state: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
