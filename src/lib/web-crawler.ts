@@ -92,9 +92,10 @@ export class WebCrawler {
         pageCount++;
         this.delayManager.recordSuccess();
 
-        // Save state periodically
+        // Save state periodically (every 10 pages)
         if (pageCount % 10 === 0) {
           await this.stateManager.saveState();
+          await this.stateManager.saveLinkRelations();
           const stats = this.stateManager.getStats();
           logger.info(
             `Progress: ${stats.completed} completed, ${stats.failed} failed, ${stats.queued} queued`
@@ -145,14 +146,25 @@ export class WebCrawler {
 
         if (!success) {
           this.stateManager.markFailed(nextUrl, String(error));
+
+          // Save state periodically on errors (every 5 failures)
+          const stats = this.stateManager.getStats();
+          if (stats.failed % 5 === 0) {
+            await this.stateManager.saveState();
+            await this.stateManager.saveLinkRelations();
+            logger.info(
+              `Progress: ${stats.completed} completed, ${stats.failed} failed, ${stats.queued} queued`
+            );
+          }
         }
 
         await this.delayManager.wait();
       }
     }
 
-    // Final state save
+    // Final state save and link relations
     await this.stateManager.saveState();
+    await this.stateManager.saveLinkRelations();
     const stats = this.stateManager.getStats();
     logger.info(`Crawl complete: ${stats.completed} completed, ${stats.failed} failed`);
   }

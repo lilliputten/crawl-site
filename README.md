@@ -260,7 +260,9 @@ pnpm test-watch    # Watch mode for tests
 3. Parses provided sitemaps (XML or HTML)
 4. If no sitemaps, crawls the site to discover URLs
 5. Extracts titles from each page
-6. Saves sitemap.json with URL list
+6. Tracks link relationships between pages
+7. Saves progress periodically (every 10 pages)
+8. Generates multiple output files (see Output Files section)
 
 ### Crawl Phase
 
@@ -269,11 +271,79 @@ pnpm test-watch    # Watch mode for tests
 3. For each URL:
    - Checks robots.txt (if enabled)
    - Downloads HTML content
+   - Extracts and tracks links
    - Saves to destination folder
    - Maintains original directory structure
    - Handles Cyrillic URLs properly
-4. Saves state after every 10 pages
+4. Saves state and link relations after every 10 pages
 5. Retries failed pages with exponential backoff
+6. Generates comprehensive link analysis files
+
+## Output Files
+
+After running `pnpm scan` or `pnpm crawl`, you'll find these files in the `crawl-data/` directory:
+
+### Scan Output
+
+- **sitemap.json** - Discovered pages with URLs and titles
+- **internal-links.json** - All internal links found (sorted array)
+- **broken-links.json** - Internal links that returned errors (404, 500, etc.)
+- **external-links.json** - All external links found (sorted array)
+- **link-relations.json** - ⭐ Hierarchical link relationship map showing which pages link to which
+
+### Link Relations Format
+
+The `link-relations.json` uses a hierarchical format for easy analysis:
+
+```json
+{
+  "http://example.com/target-page": [
+    "http://example.com/source-page-1",
+    "http://example.com/source-page-2"
+  ],
+  "http://example.com/another-target": [
+    "http://example.com/source-page-1",
+    "http://example.com/source-page-3"
+  ]
+}
+```
+
+**Key features:**
+
+- ✅ **Excludes self-references** - Pages don't list themselves as sources
+- ✅ **Deduplicated** - Each source URL appears only once per target
+- ✅ **Sorted** - Both keys and arrays are alphabetically sorted
+- ✅ **Easy to query** - Instantly find all pages linking to any URL
+
+### Use Cases
+
+**Find broken link sources:**
+
+```javascript
+const linkRelations = require('./crawl-data/link-relations.json');
+const brokenLinks = require('./crawl-data/broken-links.json');
+
+brokenLinks.forEach((brokenUrl) => {
+  const sources = linkRelations[brokenUrl] || [];
+  console.log(`Broken link ${brokenUrl} is referenced by:`, sources);
+});
+```
+
+**Analyze page popularity:**
+
+```javascript
+const linkRelations = require('./crawl-data/link-relations.json');
+const popularity = Object.entries(linkRelations)
+  .map(([url, sources]) => ({ url, inboundLinks: sources.length }))
+  .sort((a, b) => b.inboundLinks - a.inboundLinks);
+```
+
+### Crawl Output
+
+In addition to scan files, crawling generates:
+
+- **crawl-state.json** - Complete crawl state (can resume from this)
+- **crawled-content/** - Downloaded HTML files preserving site structure
 
 ## Key Features
 

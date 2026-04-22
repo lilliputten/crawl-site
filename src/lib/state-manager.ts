@@ -264,10 +264,15 @@ export class StateManager {
     const linkRelationsPath = path.join(this.stateDir, 'link-relations.json');
     await ensureDir(this.stateDir);
 
-    // Convert to hierarchical format: targetUrl -> [sourceUrls]
+    // Convert to hierarchical format: targetUrl -> [sourceUrls], excluding self-references
     const hierarchicalRelations: Record<string, string[]> = {};
 
     this.state.linkRelations.forEach((relation) => {
+      // Skip self-referenced links
+      if (relation.sourceUrl === relation.targetUrl) {
+        return;
+      }
+
       if (!hierarchicalRelations[relation.targetUrl]) {
         hierarchicalRelations[relation.targetUrl] = [];
       }

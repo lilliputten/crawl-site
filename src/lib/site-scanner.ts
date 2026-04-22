@@ -58,13 +58,18 @@ export class SiteScanner {
       logger.debug(`Progress saved: ${this.pages.length} pages scanned`);
     }
 
-    // Save link relations in hierarchical format
+    // Save link relations in hierarchical format (excluding self-references)
     if (this.linkRelations.length > 0) {
       const linkRelationsPath = path.join(this.config.stateDir, 'link-relations.json');
 
-      // Convert to hierarchical format: targetUrl -> [sourceUrls]
+      // Convert to hierarchical format: targetUrl -> [sourceUrls], excluding self-references
       const hierarchicalRelations: Record<string, string[]> = {};
       this.linkRelations.forEach((relation) => {
+        // Skip self-referenced links
+        if (relation.sourceUrl === relation.targetUrl) {
+          return;
+        }
+
         if (!hierarchicalRelations[relation.targetUrl]) {
           hierarchicalRelations[relation.targetUrl] = [];
         }
@@ -395,13 +400,18 @@ export class SiteScanner {
       );
     }
 
-    // Save link relations in hierarchical format
+    // Save link relations in hierarchical format (excluding self-references)
     if (this.linkRelations.length > 0) {
       const linkRelationsPath = path.join(this.config.stateDir, 'link-relations.json');
 
-      // Convert to hierarchical format: targetUrl -> [sourceUrls]
+      // Convert to hierarchical format: targetUrl -> [sourceUrls], excluding self-references
       const hierarchicalRelations: Record<string, string[]> = {};
       this.linkRelations.forEach((relation) => {
+        // Skip self-referenced links
+        if (relation.sourceUrl === relation.targetUrl) {
+          return;
+        }
+
         if (!hierarchicalRelations[relation.targetUrl]) {
           hierarchicalRelations[relation.targetUrl] = [];
         }
