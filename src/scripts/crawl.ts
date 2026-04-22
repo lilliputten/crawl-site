@@ -32,6 +32,9 @@ async function main() {
     const crawler = new WebCrawler(config, delayManager, stateManager);
     await crawler.crawl();
 
+    // Save link relations report
+    await stateManager.saveLinkRelations();
+
     logger.info('=== Crawl Complete ===');
   } catch (error) {
     logger.error(`Crawl failed: ${error instanceof Error ? error.message : String(error)}`);

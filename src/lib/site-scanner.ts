@@ -20,10 +20,56 @@ export class SiteScanner {
   private internalLinks: Set<string> = new Set();
   private brokenLinks: Set<string> = new Set();
   private externalLinks: Set<string> = new Set();
+  private linkRelations: Array<{ sourceUrl: string; targetUrl: string; linkText?: string }> = [];
 
   constructor(config: CrawlConfig, delayManager: DelayManager) {
     this.config = config;
     this.delayManager = delayManager;
+  }
+
+  /**
+   * Save current progress to files (called periodically during scanning)
+   */
+  private async saveProgress(): Promise<void> {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { ensureDir } = await import('./file-utils');
+
+    await ensureDir(this.config.stateDir);
+
+    // Save partial sitemap
+    if (this.pages.length > 0) {
+      const partialSiteMap: SiteMap = {
+        urls: this.pages,
+        lastUpdated: new Date(),
+      };
+
+      const sitemapPath = path.join(this.config.stateDir, 'sitemap.json');
+      const data = {
+        ...partialSiteMap,
+        urls: partialSiteMap.urls.map((p) => ({
+          ...p,
+          lastModified: p.lastModified?.toISOString(),
+        })),
+        lastUpdated: partialSiteMap.lastUpdated.toISOString(),
+      };
+
+      await fs.promises.writeFile(sitemapPath, JSON.stringify(data, null, 2), 'utf-8');
+      logger.debug(`Progress saved: ${this.pages.length} pages scanned`);
+    }
+
+    // Save link relations
+    if (this.linkRelations.length > 0) {
+      const linkRelationsPath = path.join(this.config.stateDir, 'link-relations.json');
+      const sortedRelations = [...this.linkRelations].sort((a, b) =>
+        a.sourceUrl.localeCompare(b.sourceUrl)
+      );
+      await fs.promises.writeFile(
+        linkRelationsPath,
+        JSON.stringify(sortedRelations, null, 2),
+        'utf-8'
+      );
+    }
   }
 
   /**
@@ -75,16 +121,13 @@ export class SiteScanner {
       await this.crawlForUrls(this.config.siteUrl);
     }
 
-    // Save sitemap (only if we have URLs)
+    // Final save of all data
+    await this.saveFinalResults();
+
     const siteMap: SiteMap = {
       urls: this.pages,
       lastUpdated: new Date(),
     };
-
-    await this.saveSiteMap(siteMap);
-
-    // Save link reports
-    await this.saveLinkReports();
 
     logger.info(`Scan complete. Found ${this.pages.length} pages`);
     logger.info(
@@ -129,8 +172,10 @@ export class SiteScanner {
 
     while (queue.length > 0) {
       const url = queue.shift()!;
+      const normalizedUrl = normalizeUrl(decodeUrl(url));
 
-      if (this.visitedUrls.has(url)) {
+      // Check if already visited (using normalized URL for comparison)
+      if (this.visitedUrls.has(normalizedUrl)) {
         continue;
       }
 
@@ -140,7 +185,8 @@ export class SiteScanner {
         break;
       }
 
-      this.visitedUrls.add(url);
+      // Mark as visited using normalized URL
+      this.visitedUrls.add(normalizedUrl);
       logger.debug(`Scanning: ${url}`);
 
       try {
@@ -159,11 +205,12 @@ export class SiteScanner {
           title,
         });
 
-        // Extract links from the page
+        // Extract links from the page - pass the ORIGINAL url, not normalized
         const { internal, external } = this.extractLinks(response.data, url);
 
         for (const link of internal) {
-          if (!this.visitedUrls.has(link)) {
+          const normalizedLink = normalizeUrl(decodeUrl(link));
+          if (!this.visitedUrls.has(normalizedLink)) {
             if (!this.config.respectRobotsTxt || isUrlAllowed(link, null)) {
               queue.push(link);
             }
@@ -176,6 +223,14 @@ export class SiteScanner {
 
         await this.delayManager.wait();
         this.delayManager.recordSuccess();
+
+        // Save progress periodically (every 10 pages)
+        if (this.pages.length % 10 === 0) {
+          await this.saveProgress();
+          logger.info(
+            `Progress: ${this.pages.length} pages scanned, ${this.brokenLinks.size} broken links found`
+          );
+        }
       } catch (error) {
         logger.warn(`Failed to scan ${url}:`, formatAxiosError(error));
         // Track as broken link
@@ -183,6 +238,11 @@ export class SiteScanner {
         this.brokenLinks.add(normalizedUrl);
         this.delayManager.recordError();
         await this.delayManager.wait();
+
+        // Save progress even on errors
+        if (this.pages.length % 10 === 0 || this.brokenLinks.size % 5 === 0) {
+          await this.saveProgress();
+        }
       }
     }
   }
@@ -203,13 +263,28 @@ export class SiteScanner {
         const href = element.getAttribute('href');
         if (href) {
           try {
-            // Handle relative URLs
+            // Handle relative URLs - keep ORIGINAL URL for fetching
             const fullUrl = new URL(href, baseUrl).toString();
-            const normalized = normalizeUrl(decodeUrl(fullUrl));
 
-            // Categorize as internal or external
+            // Get link text
+            const linkText = element.textContent?.trim() || '';
+
+            // Normalize for tracking/storage only
+            const normalized = normalizeUrl(decodeUrl(fullUrl));
+            const normalizedBase = normalizeUrl(decodeUrl(baseUrl));
+
+            // Track link relation with normalized URLs for consistency
+            this.linkRelations.push({
+              sourceUrl: normalizedBase,
+              targetUrl: normalized,
+              linkText: linkText || undefined,
+            });
+
+            // Categorize as internal or external using ORIGINAL URL
             if (isSameDomain(fullUrl, baseUrl)) {
-              internalLinks.push(normalized);
+              // Add ORIGINAL URL to queue for fetching (preserves trailing slashes)
+              internalLinks.push(fullUrl);
+              // Track normalized version for deduplication
               this.internalLinks.add(normalized);
             } else {
               externalLinks.push(normalized);
@@ -231,46 +306,37 @@ export class SiteScanner {
   }
 
   /**
-   * Save sitemap to file (only if we have URLs)
+   * Save final results (sitemap, link reports, link relations)
    */
-  private async saveSiteMap(siteMap: SiteMap): Promise<void> {
+  private async saveFinalResults(): Promise<void> {
     const fs = await import('fs');
     const path = await import('path');
     const { ensureDir } = await import('./file-utils');
 
-    // Only save if we have URLs
-    if (siteMap.urls.length === 0) {
-      logger.info('No URLs to save in sitemap');
-      return;
-    }
-
-    // Ensure state directory exists
     await ensureDir(this.config.stateDir);
 
-    const sitemapPath = path.join(this.config.stateDir, 'sitemap.json');
-    const data = {
-      ...siteMap,
-      urls: siteMap.urls.map((p) => ({
-        ...p,
-        lastModified: p.lastModified?.toISOString(),
-      })),
-      lastUpdated: siteMap.lastUpdated.toISOString(),
+    // Save sitemap
+    const siteMap: SiteMap = {
+      urls: this.pages,
+      lastUpdated: new Date(),
     };
 
-    await fs.promises.writeFile(sitemapPath, JSON.stringify(data, null, 2), 'utf-8');
-    logger.info(`Sitemap saved to ${sitemapPath} (${siteMap.urls.length} URLs)`);
-  }
+    if (siteMap.urls.length > 0) {
+      const sitemapPath = path.join(this.config.stateDir, 'sitemap.json');
+      const data = {
+        ...siteMap,
+        urls: siteMap.urls.map((p) => ({
+          ...p,
+          lastModified: p.lastModified?.toISOString(),
+        })),
+        lastUpdated: siteMap.lastUpdated.toISOString(),
+      };
 
-  /**
-   * Save link reports (internal, broken, external)
-   */
-  private async saveLinkReports(): Promise<void> {
-    const fs = await import('fs');
-    const path = await import('path');
-    const { ensureDir } = await import('./file-utils');
-
-    // Ensure state directory exists
-    await ensureDir(this.config.stateDir);
+      await fs.promises.writeFile(sitemapPath, JSON.stringify(data, null, 2), 'utf-8');
+      logger.info(`Sitemap saved to ${sitemapPath} (${siteMap.urls.length} URLs)`);
+    } else {
+      logger.info('No URLs to save in sitemap');
+    }
 
     // Save internal links
     if (this.internalLinks.size > 0) {
@@ -306,6 +372,23 @@ export class SiteScanner {
       );
       logger.info(
         `External links saved to ${externalLinksPath} (${this.externalLinks.size} links)`
+      );
+    }
+
+    // Save link relations
+    if (this.linkRelations.length > 0) {
+      const linkRelationsPath = path.join(this.config.stateDir, 'link-relations.json');
+      // Sort by source URL for better readability
+      const sortedRelations = [...this.linkRelations].sort((a, b) =>
+        a.sourceUrl.localeCompare(b.sourceUrl)
+      );
+      await fs.promises.writeFile(
+        linkRelationsPath,
+        JSON.stringify(sortedRelations, null, 2),
+        'utf-8'
+      );
+      logger.info(
+        `Link relations saved to ${linkRelationsPath} (${sortedRelations.length} relations)`
       );
     }
   }

@@ -6,10 +6,11 @@ import { CrawlConfig, PageData } from '@/types';
 import { DelayManager } from './delay-manager';
 import { StateManager } from './state-manager';
 import { Logger } from './logger';
-import { urlToFilePath } from './url-utils';
+import { urlToFilePath, normalizeUrl, decodeUrl, isSameDomain } from './url-utils';
 import { saveFile } from './file-utils';
 import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
 import { formatAxiosError } from './error-utils';
+import { JSDOM } from 'jsdom';
 
 const logger = new Logger();
 
@@ -81,6 +82,9 @@ export class WebCrawler {
 
         // Save the HTML content
         await this.savePage(nextUrl, response.data);
+
+        // Extract and track links
+        this.extractAndTrackLinks(response.data, nextUrl);
 
         // Mark as completed
         this.stateManager.markCompleted(nextUrl, pageData);
@@ -218,5 +222,47 @@ export class WebCrawler {
   private extractTitle(html: string): string {
     const match = html.match(/<title[^>]*>(.*?)<\/title>/i);
     return match ? match[1].trim() : '';
+  }
+
+  /**
+   * Extract links from HTML and track relations
+   */
+  private extractAndTrackLinks(html: string, sourceUrl: string): void {
+    try {
+      const dom = new JSDOM(html);
+      const document = dom.window.document;
+      const elements = document.querySelectorAll('a[href]');
+
+      elements.forEach((element) => {
+        const href = element.getAttribute('href');
+        if (href) {
+          try {
+            // Handle relative URLs
+            const fullUrl = new URL(href, sourceUrl).toString();
+            const normalizedTarget = normalizeUrl(decodeUrl(fullUrl));
+            const normalizedSource = normalizeUrl(decodeUrl(sourceUrl));
+
+            // Get link text
+            const linkText = element.textContent?.trim() || '';
+
+            // Track the link relation
+            this.stateManager.addLinkRelation(
+              normalizedSource,
+              normalizedTarget,
+              linkText || undefined
+            );
+
+            // Also track external links
+            if (!isSameDomain(fullUrl, sourceUrl)) {
+              this.stateManager.addExternalLink(normalizedTarget);
+            }
+          } catch {
+            // Skip invalid URLs
+          }
+        }
+      });
+    } catch (error) {
+      logger.debug(`Failed to extract links from ${sourceUrl}`);
+    }
   }
 }

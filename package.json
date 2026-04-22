@@ -40,7 +40,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "clean": "rimraf dist && rimraf crawl-data && rimraf crawled-content",
+    "clean": "rimraf dist && rimraf crawl-data crawled-content",
     "scan": "tsx src/scripts/scan.ts",
     "crawl": "tsx src/scripts/crawl.ts",
     "scan-build": "node dist/scripts/scan.js",

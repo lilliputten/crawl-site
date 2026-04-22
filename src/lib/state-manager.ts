@@ -1,7 +1,7 @@
 // src/lib/state-manager.ts
 
 import * as path from 'path';
-import { CrawlConfig, CrawlState, PageData } from '@/types';
+import { CrawlConfig, CrawlState, PageData, LinkRelation } from '@/types';
 import { ensureDir, saveFile, readFile, fileExists } from './file-utils';
 import { Logger } from './logger';
 // import { formatError } from './error-formatter'; // TODO: Add error formatting utility if needed
@@ -22,6 +22,7 @@ export class StateManager {
       failed: new Map(),
       brokenLinks: [],
       externalLinks: new Set(),
+      linkRelations: [],
       lastProcessed: new Date(),
     };
   }
@@ -44,6 +45,7 @@ export class StateManager {
           failed: new Map(data.failed || []),
           brokenLinks: data.brokenLinks || [],
           externalLinks: new Set(data.externalLinks || []),
+          linkRelations: data.linkRelations || [],
           lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),
         };
 
@@ -70,6 +72,7 @@ export class StateManager {
         failed: Array.from(this.state.failed.entries()),
         brokenLinks: this.state.brokenLinks,
         externalLinks: Array.from(this.state.externalLinks),
+        linkRelations: this.state.linkRelations,
         lastProcessed: this.state.lastProcessed.toISOString(),
       };
 
@@ -209,9 +212,69 @@ export class StateManager {
       failed: new Map(),
       brokenLinks: [],
       externalLinks: new Set(),
+      linkRelations: [],
       lastProcessed: new Date(),
     };
     await this.saveState();
     logger.info('State cleared');
+  }
+
+  /**
+   * Add a link relation between pages
+   */
+  addLinkRelation(sourceUrl: string, targetUrl: string, linkText?: string): void {
+    const relation: LinkRelation = {
+      sourceUrl,
+      targetUrl,
+      linkText,
+    };
+    this.state.linkRelations.push(relation);
+  }
+
+  /**
+   * Get all link relations
+   */
+  getLinkRelations(): LinkRelation[] {
+    return [...this.state.linkRelations];
+  }
+
+  /**
+   * Get all pages that link to a specific target URL
+   */
+  getPagesLinkingTo(targetUrl: string): LinkRelation[] {
+    return this.state.linkRelations.filter((relation) => relation.targetUrl === targetUrl);
+  }
+
+  /**
+   * Get all pages that a specific source URL links to
+   */
+  getPagesLinkedFrom(sourceUrl: string): LinkRelation[] {
+    return this.state.linkRelations.filter((relation) => relation.sourceUrl === sourceUrl);
+  }
+
+  /**
+   * Save link relations to a separate JSON file for easy analysis
+   */
+  async saveLinkRelations(): Promise<void> {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { ensureDir } = await import('./file-utils');
+
+    const linkRelationsPath = path.join(this.stateDir, 'link-relations.json');
+    await ensureDir(this.stateDir);
+
+    // Sort by source URL for better readability
+    const sortedRelations = [...this.state.linkRelations].sort((a, b) =>
+      a.sourceUrl.localeCompare(b.sourceUrl)
+    );
+
+    await fs.promises.writeFile(
+      linkRelationsPath,
+      JSON.stringify(sortedRelations, null, 2),
+      'utf-8'
+    );
+    logger.info(
+      `Link relations saved to ${linkRelationsPath} (${sortedRelations.length} relations)`
+    );
   }
 }

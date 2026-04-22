@@ -37,12 +37,22 @@ export interface ScanResult {
   externalLinks: string[];
 }
 
+/**
+ * Represents a link relationship between pages
+ */
+export interface LinkRelation {
+  sourceUrl: string; // The page containing the link
+  targetUrl: string; // The page being linked to
+  linkText?: string; // The text content of the link (if available)
+}
+
 export interface CrawlState {
   queued: string[];
   completed: Map<string, PageData>;
   failed: Map<string, string>;
   brokenLinks: string[]; // Internal links that returned errors
   externalLinks: Set<string>; // All external links found
+  linkRelations: LinkRelation[]; // Track which pages link to which
   lastProcessed: Date;
 }
 
