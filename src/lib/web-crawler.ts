@@ -174,7 +174,8 @@ export class WebCrawler {
    */
   private async loadSitemap(): Promise<void> {
     const fs = await import('fs');
-    const sitemapPath = path.join(this.config.stateDir, 'sitemap.json');
+    const yaml = await import('js-yaml');
+    const sitemapPath = path.join(this.config.stateDir, 'sitemap.yaml');
 
     if (!fs.existsSync(sitemapPath)) {
       logger.warn('Sitemap not found. Run scan first.');
@@ -183,7 +184,7 @@ export class WebCrawler {
 
     try {
       const content = await fs.promises.readFile(sitemapPath, 'utf-8');
-      const sitemap = JSON.parse(content);
+      const sitemap = yaml.load(content) as any;
 
       // Filter URLs to only include those from the same domain
       const siteDomain = new URL(this.config.siteUrl).host;

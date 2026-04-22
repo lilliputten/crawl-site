@@ -12,7 +12,8 @@
       "program": "src/scripts/scan.ts",
       "type": "node",
       "request": "launch",
-      "runtimeExecutable": "tsx"
+      "runtimeExecutable": "tsx",
+      "args": ["--max-pages=1"]
     },
     {
       "name": "debug crawl",

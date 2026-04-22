@@ -2,7 +2,7 @@
 
 import * as path from 'path';
 import { CrawlConfig, CrawlState, PageData, LinkRelation } from '@/types';
-import { ensureDir, saveFile, readFile, fileExists } from './file-utils';
+import { ensureDir, fileExists, writeYamlFile, readYamlFile } from './file-utils';
 import { Logger } from './logger';
 // import { formatError } from './error-formatter'; // TODO: Add error formatting utility if needed
 
@@ -17,7 +17,7 @@ export class StateManager {
   constructor(config: CrawlConfig) {
     this.config = config;
     this.stateDir = config.stateDir;
-    this.stateFile = path.join(this.stateDir, 'crawl-state.json');
+    this.stateFile = path.join(this.stateDir, 'crawl-state.yaml');
     this.state = {
       queued: [],
       completed: new Map(),
@@ -38,8 +38,12 @@ export class StateManager {
 
     if (await fileExists(this.stateFile)) {
       try {
-        const content = await readFile(this.stateFile);
-        const data = JSON.parse(content);
+        const data = await readYamlFile<any>(this.stateFile);
+
+        if (!data) {
+          logger.warn('Failed to parse state file, starting fresh');
+          return;
+        }
 
         // Convert arrays back to Maps and Sets
         this.state = {
@@ -69,7 +73,7 @@ export class StateManager {
    */
   async saveState(): Promise<void> {
     try {
-      // Convert Maps and Sets to arrays for JSON serialization
+      // Convert Maps and Sets to arrays for YAML serialization
       const data = {
         queued: this.state.queued,
         completed: Array.from(this.state.completed.entries()),
@@ -80,7 +84,7 @@ export class StateManager {
         lastProcessed: this.state.lastProcessed.toISOString(),
       };
 
-      await saveFile(this.stateFile, JSON.stringify(data, null, 2));
+      await writeYamlFile(this.stateFile, data);
       logger.debug('State saved successfully');
     } catch (error) {
       logger.error(
@@ -262,9 +266,8 @@ export class StateManager {
    * Format: { targetUrl: [sourceUrl1, sourceUrl2, ...] }
    */
   async saveLinkRelations(): Promise<void> {
-    const fs = await import('fs');
     const path = await import('path');
-    const { ensureDir } = await import('./file-utils');
+    const { ensureDir, writeYamlFile } = await import('./file-utils');
 
     await ensureDir(this.stateDir);
 
@@ -323,23 +326,23 @@ export class StateManager {
       return sorted;
     };
 
-    // Save internal link relations
+    // Save internal link relations in YAML format
     if (internalRelations.length > 0) {
-      const internalPath = path.join(this.stateDir, 'internal-link-relations.json');
+      const internalPath = path.join(this.stateDir, 'internal-link-relations.yaml');
       const sortedInternal = convertToHierarchical(internalRelations);
 
-      await fs.promises.writeFile(internalPath, JSON.stringify(sortedInternal, null, 2), 'utf-8');
+      await writeYamlFile(internalPath, sortedInternal);
       logger.info(
         `Internal link relations saved to ${internalPath} (${Object.keys(sortedInternal).length} target URLs)`
       );
     }
 
-    // Save external link relations
+    // Save external link relations in YAML format
     if (externalRelations.length > 0) {
-      const externalPath = path.join(this.stateDir, 'external-link-relations.json');
+      const externalPath = path.join(this.stateDir, 'external-link-relations.yaml');
       const sortedExternal = convertToHierarchical(externalRelations);
 
-      await fs.promises.writeFile(externalPath, JSON.stringify(sortedExternal, null, 2), 'utf-8');
+      await writeYamlFile(externalPath, sortedExternal);
       logger.info(
         `External link relations saved to ${externalPath} (${Object.keys(sortedExternal).length} target URLs)`
       );

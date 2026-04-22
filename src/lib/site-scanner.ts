@@ -322,8 +322,6 @@ export class SiteScanner {
 
     // Recursive function to build tree, with circular link detection
     const buildNode = (url: string, depth: number = 0): any => {
-      // console.log('[site-scanner:buildNode]', depth, url);
-
       // Prevent infinite recursion from circular links by checking current path
       if (currentPath.has(url)) {
         // console.log('[site-scanner:buildNode] CIRCULAR DETECTED:', url);
@@ -340,7 +338,6 @@ export class SiteScanner {
       currentPath.add(url);
 
       const children = adjacencyList[url] ? Array.from(adjacencyList[url]) : [];
-      console.log('[site-scanner:buildNode] Processing', url, 'with', children.length, 'children');
 
       const childNodes = children
         .map((childUrl) => buildNode(childUrl, depth + 1))
@@ -637,17 +634,18 @@ export class SiteScanner {
               internalLinks.push(fullUrl);
               // Track normalized version for deduplication
               this.internalLinks.add(normalized);
-
-              // Track link relation with normalized URLs for consistency
-              this.linkRelations.push({
-                sourceUrl: normalizedBase,
-                targetUrl: normalized,
-                linkText: linkText || undefined,
-              });
             } else {
+              // Add ORIGINAL URL to queue for fetching (preserves trailing slashes)
               externalLinks.push(normalized);
+              // Track normalized version for deduplication
               this.externalLinks.add(normalized);
             }
+            // Track link relation with normalized URLs for consistency
+            this.linkRelations.push({
+              sourceUrl: normalizedBase,
+              targetUrl: normalized,
+              linkText: linkText || undefined,
+            });
           } catch {
             // Skip invalid URLs
           }
@@ -761,8 +759,6 @@ export class SiteScanner {
       );
     }
 
-    logger.info('About to process link relations...');
-
     // Save link relations in hierarchical format (excluding self-references)
     logger.info(`Processing ${this.linkRelations.length} link relations...`);
 
@@ -791,6 +787,10 @@ export class SiteScanner {
             // Skip invalid URLs
           }
         });
+
+        logger.info(
+          `Separated: ${internalRelations.length} internal, ${externalRelations.length} external`
+        );
 
         // Save internal link relations in YAML format
         if (internalRelations.length > 0) {

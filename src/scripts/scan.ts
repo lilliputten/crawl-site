@@ -29,7 +29,7 @@ async function main() {
     const delayManager = new DelayManager(config);
 
     // Clear previous scan data if starting fresh
-    const stateFile = path.join(config.stateDir, 'sitemap.json');
+    const stateFile = path.join(config.stateDir, 'sitemap.yaml');
     if (fs.existsSync(stateFile)) {
       await fs.promises.unlink(stateFile);
     }
