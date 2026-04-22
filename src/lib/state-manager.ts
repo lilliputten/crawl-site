@@ -26,6 +26,7 @@ export class StateManager {
     this.stateDir = config.stateDir;
     this.stateFile = path.join(this.stateDir, 'crawl-state.yaml');
     this.state = {
+      // All the state data: queued, completed, failed, brokenLinks, externalLinks, linkRelations, lastProcessed, crawledPages
       queued: [],
       completed: new Map(),
       failed: new Map(),
@@ -50,14 +51,15 @@ export class StateManager {
         const brokenLinksData = await readYamlFile<string[]>(brokenLinksPath);
         if (brokenLinksData && Array.isArray(brokenLinksData)) {
           this.state.brokenLinks = brokenLinksData;
-          logger.info(`Loaded ${this.state.brokenLinks.length} broken links from broken-links.yaml`);
+          logger.info(
+            `Loaded ${this.state.brokenLinks.length} broken links from broken-links.yaml`
+          );
         }
       } catch (error) {
         logger.warn('Failed to load broken-links.yaml:', error);
       }
     }
 
-    debugger;
     if (fileExists(this.stateFile)) {
       try {
         const data = await readYamlFile<any>(this.stateFile);
@@ -73,7 +75,8 @@ export class StateManager {
           completed: new Map(data.completed || []),
           failed: new Map(data.failed || []),
           // Keep broken links loaded from broken-links.yaml, or fall back to state file
-          brokenLinks: this.state.brokenLinks.length > 0 ? this.state.brokenLinks : (data.brokenLinks || []),
+          brokenLinks:
+            this.state.brokenLinks.length > 0 ? this.state.brokenLinks : data.brokenLinks || [],
           externalLinks: new Set(data.externalLinks || []),
           linkRelations: data.linkRelations || [],
           lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),
@@ -249,6 +252,43 @@ export class StateManager {
     };
     await this.saveState();
     logger.info('State cleared');
+  }
+
+  /**
+   * Update state with scanner data (batch update)
+   */
+  updateFromScanner(data: {
+    pages: PageData[];
+    brokenLinks: string[];
+    externalLinks: string[];
+    linkRelations: LinkRelation[];
+    crawledPages: string[];
+  }): void {
+    // Update completed pages
+    data.pages.forEach((page) => {
+      this.state.completed.set(page.url, page);
+    });
+
+    // Update broken links
+    this.state.brokenLinks = [...new Set([...this.state.brokenLinks, ...data.brokenLinks])];
+
+    // Update external links
+    data.externalLinks.forEach((url) => {
+      this.state.externalLinks.add(url);
+    });
+
+    // Update link relations
+    this.state.linkRelations = [...this.state.linkRelations, ...data.linkRelations];
+
+    // Update crawled pages
+    this.state.crawledPages = [...new Set([...this.state.crawledPages, ...data.crawledPages])];
+
+    // Update last processed time
+    this.state.lastProcessed = new Date();
+
+    logger.info(
+      `State updated from scanner: ${data.pages.length} pages, ${data.brokenLinks.length} broken links, ${data.externalLinks.length} external links, ${data.linkRelations.length} relations`
+    );
   }
 
   /**

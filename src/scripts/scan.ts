@@ -1,9 +1,8 @@
 #!/usr/bin/env ts-node
 
-import * as fs from 'fs';
-import * as path from 'path';
 import { loadConfig, validateConfig } from '@/config';
 import { DelayManager } from '@/lib/delay-manager';
+import { StateManager, configureLogger as configureStateManagerLogger } from '@/lib/state-manager';
 import { SiteScanner, configureLogger as configureSiteScannerLogger } from '@/lib/site-scanner';
 import { configureLogger as configureRobotsParserLogger } from '@/lib/robots-parser';
 import { configureLogger as configureSitemapParserLogger } from '@/lib/sitemap-parser';
@@ -19,6 +18,7 @@ async function main() {
     // Configure logger with settings from config
     const logger = new Logger(config.logLevel, config.noColor);
     configureSiteScannerLogger(config);
+    configureStateManagerLogger(config);
     configureRobotsParserLogger(config);
     configureSitemapParserLogger(config);
     configureUrlExcluderLogger(config);
@@ -36,15 +36,11 @@ async function main() {
 
     // Initialize components
     const delayManager = new DelayManager(config);
-
-    // Clear previous scan data if starting fresh
-    const stateFile = path.join(config.stateDir, 'sitemap.yaml');
-    if (fs.existsSync(stateFile)) {
-      await fs.promises.unlink(stateFile);
-    }
+    const stateManager = new StateManager(config);
+    await stateManager.initialize();
 
     // Create scanner and run
-    const scanner = new SiteScanner(config, delayManager);
+    const scanner = new SiteScanner(config, delayManager, stateManager);
     const siteMap = await scanner.scan();
 
     logger.info(`=== Scan Complete: ${siteMap.urls.length} pages found ===`);

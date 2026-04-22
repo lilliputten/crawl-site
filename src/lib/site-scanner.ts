@@ -5,6 +5,7 @@ import { CrawlConfig, PageData, SiteMap, LinkRelation } from '@/types';
 import { parseSitemapUrls, extractTitle } from './sitemap-parser';
 import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
 import { DelayManager } from './delay-manager';
+import { StateManager } from './state-manager';
 import { Logger } from './logger';
 import { normalizeUrl, decodeUrl, isSameDomain, urlToFilePath } from './url-utils';
 import { formatAxiosError } from './error-utils';
@@ -55,6 +56,7 @@ function buildMinimalHeaders(userAgent: string): Record<string, string> {
 export class SiteScanner {
   private config: CrawlConfig;
   private delayManager: DelayManager;
+  private stateManager: StateManager; // Required StateManager for state management
   private visitedUrls: Set<string> = new Set();
   private pages: PageData[] = [];
   private internalLinks: Set<string> = new Set();
@@ -65,9 +67,26 @@ export class SiteScanner {
   private retryCounts: Map<string, number> = new Map(); // Track retry attempts per URL
   private excludedUrlsCount: number = 0; // Track excluded URLs count
 
-  constructor(config: CrawlConfig, delayManager: DelayManager) {
+  constructor(config: CrawlConfig, delayManager: DelayManager, stateManager: StateManager) {
     this.config = config;
     this.delayManager = delayManager;
+    this.stateManager = stateManager;
+
+    // Load all state data from StateManager
+    this.brokenLinks = new Set(this.stateManager.getBrokenLinks());
+    this.externalLinks = new Set(this.stateManager.getExternalLinks());
+    this.linkRelations = this.stateManager.getLinkRelations();
+
+    // Load crawled pages from completed pages in state
+    const completedPages = this.stateManager.getCompletedPages();
+    completedPages.forEach((page) => {
+      this.crawledPages.add(page.url);
+      this.pages.push(page);
+    });
+
+    logger.info(
+      `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.linkRelations.length} link relations`
+    );
   }
 
   /**
@@ -431,6 +450,20 @@ export class SiteScanner {
       `Links summary: ${this.internalLinks.size} internal, ${this.brokenLinks.size} broken, ${this.externalLinks.size} external`
     );
     logger.info(`Excluded URLs: ${this.excludedUrlsCount}`);
+
+    // Update StateManager with all scanner data
+    this.stateManager.updateFromScanner({
+      pages: this.pages,
+      brokenLinks: Array.from(this.brokenLinks),
+      externalLinks: Array.from(this.externalLinks),
+      linkRelations: this.linkRelations,
+      crawledPages: Array.from(this.crawledPages),
+    });
+
+    // Save state to disk
+    await this.stateManager.saveState();
+    await this.stateManager.saveBrokenLinks();
+    await this.stateManager.saveLinkRelations();
 
     return siteMap;
   }
