@@ -9,11 +9,13 @@ import { Logger } from './logger';
 const logger = new Logger();
 
 export class StateManager {
+  private config: CrawlConfig;
   private stateDir: string;
   private stateFile: string;
   private state: CrawlState;
 
   constructor(config: CrawlConfig) {
+    this.config = config;
     this.stateDir = config.stateDir;
     this.stateFile = path.join(this.stateDir, 'crawl-state.json');
     this.state = {
@@ -253,7 +255,7 @@ export class StateManager {
   }
 
   /**
-   * Save link relations to a separate JSON file for easy analysis
+   * Save link relations to separate files for internal and external links
    * Format: { targetUrl: [sourceUrl1, sourceUrl2, ...] }
    */
   async saveLinkRelations(): Promise<void> {
@@ -261,11 +263,20 @@ export class StateManager {
     const path = await import('path');
     const { ensureDir } = await import('./file-utils');
 
-    const linkRelationsPath = path.join(this.stateDir, 'link-relations.json');
     await ensureDir(this.stateDir);
 
-    // Convert to hierarchical format: targetUrl -> [sourceUrls], excluding self-references
-    const hierarchicalRelations: Record<string, string[]> = {};
+    // Get site domain to separate internal/external
+    let siteDomain: string;
+    try {
+      siteDomain = new URL(this.config.siteUrl).host;
+    } catch (error) {
+      logger.error(`Invalid site URL: ${this.config.siteUrl}`);
+      return;
+    }
+
+    // Separate internal and external relations
+    const internalRelations: LinkRelation[] = [];
+    const externalRelations: LinkRelation[] = [];
 
     this.state.linkRelations.forEach((relation) => {
       // Skip self-referenced links
@@ -273,30 +284,67 @@ export class StateManager {
         return;
       }
 
-      if (!hierarchicalRelations[relation.targetUrl]) {
-        hierarchicalRelations[relation.targetUrl] = [];
-      }
-      // Avoid duplicate source URLs for the same target
-      if (!hierarchicalRelations[relation.targetUrl].includes(relation.sourceUrl)) {
-        hierarchicalRelations[relation.targetUrl].push(relation.sourceUrl);
+      try {
+        const targetDomain = new URL(relation.targetUrl).host;
+        if (targetDomain === siteDomain) {
+          internalRelations.push(relation);
+        } else {
+          externalRelations.push(relation);
+        }
+      } catch {
+        // Skip invalid URLs
       }
     });
 
-    // Sort by target URL for better readability
-    const sortedRelations: Record<string, string[]> = {};
-    Object.keys(hierarchicalRelations)
-      .sort()
-      .forEach((key) => {
-        sortedRelations[key] = hierarchicalRelations[key].sort();
+    // Helper function to convert to hierarchical format
+    const convertToHierarchical = (relations: LinkRelation[]): Record<string, string[]> => {
+      const hierarchical: Record<string, string[]> = {};
+
+      relations.forEach((relation) => {
+        if (!hierarchical[relation.targetUrl]) {
+          hierarchical[relation.targetUrl] = [];
+        }
+        if (!hierarchical[relation.targetUrl].includes(relation.sourceUrl)) {
+          hierarchical[relation.targetUrl].push(relation.sourceUrl);
+        }
       });
 
-    await fs.promises.writeFile(
-      linkRelationsPath,
-      JSON.stringify(sortedRelations, null, 2),
-      'utf-8'
-    );
-    logger.info(
-      `Link relations saved to ${linkRelationsPath} (${Object.keys(sortedRelations).length} target URLs)`
-    );
+      // Sort by target URL
+      const sorted: Record<string, string[]> = {};
+      Object.keys(hierarchical)
+        .sort()
+        .forEach((key) => {
+          sorted[key] = hierarchical[key].sort();
+        });
+
+      return sorted;
+    };
+
+    // Save internal link relations
+    if (internalRelations.length > 0) {
+      const internalPath = path.join(this.stateDir, 'internal-link-relations.json');
+      const sortedInternal = convertToHierarchical(internalRelations);
+
+      await fs.promises.writeFile(internalPath, JSON.stringify(sortedInternal, null, 2), 'utf-8');
+      logger.info(
+        `Internal link relations saved to ${internalPath} (${Object.keys(sortedInternal).length} target URLs)`
+      );
+    }
+
+    // Save external link relations
+    if (externalRelations.length > 0) {
+      const externalPath = path.join(this.stateDir, 'external-link-relations.json');
+      const sortedExternal = convertToHierarchical(externalRelations);
+
+      await fs.promises.writeFile(externalPath, JSON.stringify(sortedExternal, null, 2), 'utf-8');
+      logger.info(
+        `External link relations saved to ${externalPath} (${Object.keys(sortedExternal).length} target URLs)`
+      );
+    }
+
+    // Log summary if no relations found
+    if (internalRelations.length === 0 && externalRelations.length === 0) {
+      logger.debug('No link relations to save');
+    }
   }
 }

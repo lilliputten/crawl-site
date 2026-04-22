@@ -60,40 +60,83 @@ export class SiteScanner {
 
     // Save link relations in hierarchical format (excluding self-references)
     if (this.linkRelations.length > 0) {
-      const linkRelationsPath = path.join(this.config.stateDir, 'link-relations.json');
+      const siteDomain = new URL(this.config.siteUrl).host;
 
-      // Convert to hierarchical format: targetUrl -> [sourceUrls], excluding self-references
-      const hierarchicalRelations: Record<string, string[]> = {};
+      // Separate internal and external relations
+      const internalRelations: LinkRelation[] = [];
+      const externalRelations: LinkRelation[] = [];
+
       this.linkRelations.forEach((relation) => {
         // Skip self-referenced links
         if (relation.sourceUrl === relation.targetUrl) {
           return;
         }
 
-        if (!hierarchicalRelations[relation.targetUrl]) {
-          hierarchicalRelations[relation.targetUrl] = [];
-        }
-        if (!hierarchicalRelations[relation.targetUrl].includes(relation.sourceUrl)) {
-          hierarchicalRelations[relation.targetUrl].push(relation.sourceUrl);
+        try {
+          const targetDomain = new URL(relation.targetUrl).host;
+          if (targetDomain === siteDomain) {
+            internalRelations.push(relation);
+          } else {
+            externalRelations.push(relation);
+          }
+        } catch {
+          // Skip invalid URLs
         }
       });
 
-      // Sort by target URL
-      const sortedRelations: Record<string, string[]> = {};
-      Object.keys(hierarchicalRelations)
-        .sort()
-        .forEach((key) => {
-          sortedRelations[key] = hierarchicalRelations[key].sort();
+      // Save internal link relations
+      if (internalRelations.length > 0) {
+        const internalPath = path.join(this.config.stateDir, 'internal-link-relations.json');
+        const hierarchicalInternal: Record<string, string[]> = {};
+
+        internalRelations.forEach((relation) => {
+          if (!hierarchicalInternal[relation.targetUrl]) {
+            hierarchicalInternal[relation.targetUrl] = [];
+          }
+          if (!hierarchicalInternal[relation.targetUrl].includes(relation.sourceUrl)) {
+            hierarchicalInternal[relation.targetUrl].push(relation.sourceUrl);
+          }
         });
 
-      await fs.promises.writeFile(
-        linkRelationsPath,
-        JSON.stringify(sortedRelations, null, 2),
-        'utf-8'
-      );
-      logger.info(
-        `Link relations saved to ${linkRelationsPath} (${Object.keys(sortedRelations).length} target URLs)`
-      );
+        const sortedInternal: Record<string, string[]> = {};
+        Object.keys(hierarchicalInternal)
+          .sort()
+          .forEach((key) => {
+            sortedInternal[key] = hierarchicalInternal[key].sort();
+          });
+
+        await fs.promises.writeFile(internalPath, JSON.stringify(sortedInternal, null, 2), 'utf-8');
+        logger.info(
+          `Internal link relations saved to ${internalPath} (${Object.keys(sortedInternal).length} target URLs)`
+        );
+      }
+
+      // Save external link relations
+      if (externalRelations.length > 0) {
+        const externalPath = path.join(this.config.stateDir, 'external-link-relations.json');
+        const hierarchicalExternal: Record<string, string[]> = {};
+
+        externalRelations.forEach((relation) => {
+          if (!hierarchicalExternal[relation.targetUrl]) {
+            hierarchicalExternal[relation.targetUrl] = [];
+          }
+          if (!hierarchicalExternal[relation.targetUrl].includes(relation.sourceUrl)) {
+            hierarchicalExternal[relation.targetUrl].push(relation.sourceUrl);
+          }
+        });
+
+        const sortedExternal: Record<string, string[]> = {};
+        Object.keys(hierarchicalExternal)
+          .sort()
+          .forEach((key) => {
+            sortedExternal[key] = hierarchicalExternal[key].sort();
+          });
+
+        await fs.promises.writeFile(externalPath, JSON.stringify(sortedExternal, null, 2), 'utf-8');
+        logger.info(
+          `External link relations saved to ${externalPath} (${Object.keys(sortedExternal).length} target URLs)`
+        );
+      }
     }
   }
 
@@ -340,6 +383,8 @@ export class SiteScanner {
 
     await ensureDir(this.config.stateDir);
 
+    logger.debug(`Saving final results: ${this.linkRelations.length} link relations tracked`);
+
     // Save sitemap
     const siteMap: SiteMap = {
       urls: this.pages,
@@ -402,40 +447,77 @@ export class SiteScanner {
 
     // Save link relations in hierarchical format (excluding self-references)
     if (this.linkRelations.length > 0) {
-      const linkRelationsPath = path.join(this.config.stateDir, 'link-relations.json');
+      const siteDomain = new URL(this.config.siteUrl).host;
 
-      // Convert to hierarchical format: targetUrl -> [sourceUrls], excluding self-references
-      const hierarchicalRelations: Record<string, string[]> = {};
+      // Separate internal and external relations
+      const internalRelations: LinkRelation[] = [];
+      const externalRelations: LinkRelation[] = [];
+
       this.linkRelations.forEach((relation) => {
         // Skip self-referenced links
         if (relation.sourceUrl === relation.targetUrl) {
           return;
         }
 
-        if (!hierarchicalRelations[relation.targetUrl]) {
-          hierarchicalRelations[relation.targetUrl] = [];
-        }
-        if (!hierarchicalRelations[relation.targetUrl].includes(relation.sourceUrl)) {
-          hierarchicalRelations[relation.targetUrl].push(relation.sourceUrl);
+        try {
+          const targetDomain = new URL(relation.targetUrl).host;
+          if (targetDomain === siteDomain) {
+            internalRelations.push(relation);
+          } else {
+            externalRelations.push(relation);
+          }
+        } catch {
+          // Skip invalid URLs
         }
       });
 
-      // Sort by target URL
-      const sortedRelations: Record<string, string[]> = {};
-      Object.keys(hierarchicalRelations)
-        .sort()
-        .forEach((key) => {
-          sortedRelations[key] = hierarchicalRelations[key].sort();
+      // Save internal link relations
+      if (internalRelations.length > 0) {
+        const internalPath = path.join(this.config.stateDir, 'internal-link-relations.json');
+        const hierarchicalInternal: Record<string, string[]> = {};
+
+        internalRelations.forEach((relation) => {
+          if (!hierarchicalInternal[relation.targetUrl]) {
+            hierarchicalInternal[relation.targetUrl] = [];
+          }
+          if (!hierarchicalInternal[relation.targetUrl].includes(relation.sourceUrl)) {
+            hierarchicalInternal[relation.targetUrl].push(relation.sourceUrl);
+          }
         });
 
-      await fs.promises.writeFile(
-        linkRelationsPath,
-        JSON.stringify(sortedRelations, null, 2),
-        'utf-8'
-      );
-      logger.info(
-        `Link relations saved to ${linkRelationsPath} (${Object.keys(sortedRelations).length} target URLs)`
-      );
+        const sortedInternal: Record<string, string[]> = {};
+        Object.keys(hierarchicalInternal)
+          .sort()
+          .forEach((key) => {
+            sortedInternal[key] = hierarchicalInternal[key].sort();
+          });
+
+        await fs.promises.writeFile(internalPath, JSON.stringify(sortedInternal, null, 2), 'utf-8');
+      }
+
+      // Save external link relations
+      if (externalRelations.length > 0) {
+        const externalPath = path.join(this.config.stateDir, 'external-link-relations.json');
+        const hierarchicalExternal: Record<string, string[]> = {};
+
+        externalRelations.forEach((relation) => {
+          if (!hierarchicalExternal[relation.targetUrl]) {
+            hierarchicalExternal[relation.targetUrl] = [];
+          }
+          if (!hierarchicalExternal[relation.targetUrl].includes(relation.sourceUrl)) {
+            hierarchicalExternal[relation.targetUrl].push(relation.sourceUrl);
+          }
+        });
+
+        const sortedExternal: Record<string, string[]> = {};
+        Object.keys(hierarchicalExternal)
+          .sort()
+          .forEach((key) => {
+            sortedExternal[key] = hierarchicalExternal[key].sort();
+          });
+
+        await fs.promises.writeFile(externalPath, JSON.stringify(sortedExternal, null, 2), 'utf-8');
+      }
     }
   }
 }
