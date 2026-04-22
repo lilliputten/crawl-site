@@ -2,13 +2,40 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import yaml from 'js-yaml';
 
 /**
- * Ensure directory exists, create if it doesn't
+ * Ensure directory exists, create it if it doesn't
  */
 export async function ensureDir(dirPath: string): Promise<void> {
-  if (!fs.existsSync(dirPath)) {
-    await fs.promises.mkdir(dirPath, { recursive: true });
+  await fs.promises.mkdir(dirPath, { recursive: true });
+}
+
+/**
+ * Write data to file in YAML format
+ */
+export async function writeYamlFile(filePath: string, data: any): Promise<void> {
+  const dir = path.dirname(filePath);
+  await ensureDir(dir);
+
+  const yamlContent = yaml.dump(data, {
+    indent: 2,
+    lineWidth: -1, // Don't wrap lines
+    noRefs: true, // Don't use references
+  });
+
+  await fs.promises.writeFile(filePath, yamlContent, 'utf-8');
+}
+
+/**
+ * Read data from YAML file
+ */
+export async function readYamlFile<T>(filePath: string): Promise<T | null> {
+  try {
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    return yaml.load(content) as T;
+  } catch (error) {
+    return null;
   }
 }
 

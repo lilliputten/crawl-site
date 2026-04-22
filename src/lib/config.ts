@@ -67,10 +67,14 @@ export function loadConfig(): CrawlerConfig {
   const requestTimeout = Number(getValue('request-timeout', 30000));
   const dest = getValue('dest', './dest');
   const stateDir = getValue('state-dir', './crawl-data');
-  const userAgent = getValue('user-agent', 'Mozilla/5.0 (compatible; CrawlSiteBot/1.0)');
+  const userAgent = getValue(
+    'user-agent',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  );
   const respectRobotsTxt = getValue('respect-robots-txt', false);
   const maxPages = Number(getValue('max-pages', 0));
   const logLevel = getValue('log-level', 'info');
+  const useBrowserHeaders = getValue('use-browser-headers', false);
 
   const sitemapUrls = parseSitemapUrls(sitemapUrlsRaw);
 
@@ -87,5 +91,6 @@ export function loadConfig(): CrawlerConfig {
     respectRobotsTxt,
     maxPages,
     logLevel,
+    useBrowserHeaders,
   };
 }

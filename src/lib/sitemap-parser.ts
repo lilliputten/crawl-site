@@ -46,7 +46,7 @@ export async function parseSitemapUrls(
       }
     }
   } catch (error) {
-    logger.error(`Failed to parse sitemap ${sitemapUrl}: ${formatAxiosError(error, sitemapUrl)}`);
+    logger.error(`Failed to parse sitemap ${sitemapUrl}: ${formatAxiosError(error)}`);
     throw error;
   }
 }

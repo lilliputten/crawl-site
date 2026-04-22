@@ -48,6 +48,8 @@ export function parseCommandLineArgs(): Partial<CrawlConfig> {
       config.maxPages = parseInt(arg.split('=')[1], 10);
     } else if (arg.startsWith('--log-level=')) {
       config.logLevel = arg.split('=')[1] as CrawlConfig['logLevel'];
+    } else if (arg.startsWith('--use-browser-headers=')) {
+      config.useBrowserHeaders = arg.split('=')[1] === 'true';
     }
   }
 
@@ -64,10 +66,13 @@ export function loadConfig(): CrawlConfig {
     requestTimeout: parseInt(process.env.REQUEST_TIMEOUT || '30000', 10),
     dest: process.env.DEST || './crawled-content',
     stateDir: process.env.STATE_DIR || './crawl-data',
-    userAgent: process.env.USER_AGENT || 'Mozilla/5.0 (compatible; CrawlSiteBot/0.1)',
+    userAgent:
+      process.env.USER_AGENT ||
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     respectRobotsTxt: process.env.RESPECT_ROBOTS_TXT === 'true',
     maxPages: parseInt(process.env.MAX_PAGES || '0', 10),
     logLevel: (process.env.LOG_LEVEL as CrawlConfig['logLevel']) || 'info',
+    useBrowserHeaders: process.env.USE_BROWSER_HEADERS === 'true',
   };
 
   // Override with command line arguments

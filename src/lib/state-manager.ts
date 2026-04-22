@@ -26,6 +26,7 @@ export class StateManager {
       externalLinks: new Set(),
       linkRelations: [],
       lastProcessed: new Date(),
+      crawledPages: [],
     };
   }
 
@@ -49,6 +50,7 @@ export class StateManager {
           externalLinks: new Set(data.externalLinks || []),
           linkRelations: data.linkRelations || [],
           lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),
+          crawledPages: data.crawledPages || [],
         };
 
         logger.info(
@@ -216,6 +218,7 @@ export class StateManager {
       externalLinks: new Set(),
       linkRelations: [],
       lastProcessed: new Date(),
+      crawledPages: [],
     };
     await this.saveState();
     logger.info('State cleared');

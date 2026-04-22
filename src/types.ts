@@ -11,6 +11,7 @@ export interface CrawlConfig {
   respectRobotsTxt: boolean;
   maxPages: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+  useBrowserHeaders: boolean; // Impersonate as normal browser
 }
 
 // Keep CrawlerConfig as an alias for backward compatibility
@@ -54,6 +55,7 @@ export interface CrawlState {
   externalLinks: Set<string>; // All external links found
   linkRelations: LinkRelation[]; // Track which pages link to which
   lastProcessed: Date;
+  crawledPages: string[]; // URLs of pages that have been successfully crawled and saved
 }
 
 export interface RobotsTxt {

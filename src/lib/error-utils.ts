@@ -5,7 +5,7 @@ import { AxiosError } from 'axios';
 /**
  * Format Axios error into a readable message
  */
-export function formatAxiosError(error: unknown, url?: string): string {
+export function formatAxiosError(error: unknown): string {
   if (!(error instanceof Error)) {
     return String(error);
   }

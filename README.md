@@ -7,10 +7,15 @@ A TypeScript-based website crawler and scanner with resume capability. It scans 
 - **Two-stage process**: Scan (discover URLs) and Crawl (download content)
 - **Sitemap support**: Parse XML and HTML sitemaps
 - **Resume capability**: Continue crawling from where you left off
+- **Smart retry**: Failed pages are automatically retried up to configured max retries
 - **Configurable delays**: Exponential backoff on errors
 - **Cyrillic URL support**: Properly handles unicode characters in URLs
+- **Browser impersonation**: Optional realistic browser headers to avoid detection
 - **robots.txt respect**: Optional robots.txt compliance
 - **State management**: Tracks progress and can resume later
+- **Content preservation**: Saves crawled pages as HTML with original directory structure
+- **Link analysis**: Tracks internal, external, and broken links with relationship mapping
+- **YAML output**: All state and data files use YAML format for better readability
 - **Configurable**: Environment variables and command-line arguments
 
 ## Installation
@@ -25,29 +30,42 @@ pnpm install
 
 Copy `.env` to `.env.local` and modify as needed:
 
-```env
-# Single sitemap URL
+```
+# Site Configuration
 SITE_URL=https://example.com
-SITEMAP_URLS=["https://example.com/sitemap.xml"]
+SITEMAP_URLS=[]
 
-# Multiple sitemap URLs (JSON array format)
-# SITEMAP_URLS=["https://example.com/sitemap1.xml","https://example.com/sitemap2.xml","https://example.com/blog/sitemap.xml"]
-
+# Crawl Settings
 CRAWL_DELAY=1000
 MAX_RETRIES=3
 RETRY_DELAY_BASE=2000
 REQUEST_TIMEOUT=30000
+
+# Output
 DEST=./crawled-content
+
+# State Management
 STATE_DIR=./crawl-data
-USER_AGENT=Mozilla/5.0 (compatible; CrawlSiteBot/0.1)
+
+# User Agent (Realistic browser User-Agent by default)
+USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+
+# Use full browser headers (Accept, Accept-Language, etc.) to impersonate a real browser
+USE_BROWSER_HEADERS=false
+
+# Respect robots.txt
 RESPECT_ROBOTS_TXT=true
+
+# Max pages to crawl (0 = unlimited)
 MAX_PAGES=0
+
+# Log level: debug, info, warn, error
 LOG_LEVEL=info
 ```
 
 **Example with multiple sitemaps in .env.local:**
 
-```env
+```
 SITE_URL=https://example.com
 SITEMAP_URLS=["https://example.com/sitemap-main.xml","https://example.com/sitemap-products.xml","https://example.com/sitemap-blog.xml"]
 CRAWL_DELAY=1500
@@ -80,12 +98,13 @@ Available arguments:
 - `--site-url=` - Target website URL
 - `--sitemap-urls=` - JSON array of sitemap URLs
 - `--crawl-delay=` - Delay between requests (ms)
-- `--max-retries=` - Maximum retry attempts
+- `--max-retries=` - Maximum retry attempts for failed pages
 - `--retry-delay-base=` - Base delay for retries (ms)
 - `--request-timeout=` - Request timeout (ms)
-- `--dest=` - Output directory
+- `--dest=` - Output directory for crawled content
 - `--state-dir=` - State storage directory
 - `--user-agent=` - Custom user agent string
+- `--use-browser-headers=` - Use realistic browser headers (true/false)
 - `--respect-robots-txt=` - Respect robots.txt (true/false)
 - `--max-pages=` - Maximum pages to crawl (0 = unlimited)
 - `--log-level=` - Log level (debug/info/warn/error)
@@ -333,7 +352,7 @@ brokenLinks.forEach((brokenUrl) => {
 
 ```javascript
 const linkRelations = require('./crawl-data/link-relations.json');
-const popularity = Object.entries(linkRelations)
+const popularity = Object.entries(link - relations)
   .map(([url, sources]) => ({ url, inboundLinks: sources.length }))
   .sort((a, b) => b.inboundLinks - a.inboundLinks);
 ```
@@ -364,7 +383,120 @@ When errors occur, delays increase exponentially:
 
 ### State Management
 
-The crawler maintains state in `crawl-state.json` and can resume from where it left off if interrupted. This is useful for large sites.
+The crawler maintains state in `crawl-state.json` (and other YAML files) and can resume from where it left off if interrupted. This is useful for large sites.
+
+## Advanced Features
+
+### Smart Retry Mechanism
+
+The crawler automatically retries failed pages to handle temporary network issues or server errors:
+
+- **Configurable retries**: Set `MAX_RETRIES` (default: 3) to control retry attempts
+- **Exponential backoff**: Uses `RETRY_DELAY_BASE` with exponential increase on each retry
+- **Automatic re-queueing**: Failed pages are added back to the queue for retry
+- **Broken link tracking**: Only marks pages as "broken" after all retries are exhausted
+- **Resume support**: On restart, previously broken links will be retried again
+
+Example:
+
+```bash
+# Customize retry behavior
+pnpm scan --max-retries=5 --retry-delay-base=3000
+```
+
+### Browser Impersonation
+
+To avoid detection and blocking by websites, you can enable realistic browser headers:
+
+**Environment variable:**
+
+```env
+USE_BROWSER_HEADERS=true
+```
+
+**Command-line:**
+
+```bash
+pnpm scan --use-browser-headers=true
+```
+
+When enabled, the crawler sends headers that mimic a real Chrome browser:
+
+- `Accept`: Full content type negotiation
+- `Accept-Language`: Language preferences
+- `Accept-Encoding`: Compression support
+- `Sec-Fetch-*`: Modern browser security headers
+- `Cache-Control`: Cache behavior
+- `Connection`: Keep-alive connections
+
+**Note:** The default User-Agent is already set to a realistic Chrome browser string. Enable `USE_BROWSER_HEADERS` for additional header fields.
+
+### Content Organization
+
+Crawled pages are saved in the `crawled-content` directory maintaining the original site structure:
+
+```
+crawled-content/
+├── index.html              # Homepage
+├── about/
+│   └── index.html          # /about/
+├── articles/
+│   ├── news.html           # /articles/news
+│   └── reviews.html        # /articles/reviews
+└── контакты/               # Cyrillic URLs preserved!
+    └── index.html
+```
+
+### Site Structure Analysis
+
+The scanner generates two types of sitemap files to help you understand your site's structure:
+
+**1. Flat Sitemap (`sitemap.yaml`):**
+A simple list of all discovered pages with their titles and metadata.
+
+**2. Hierarchical Sitemap (`sitemap-structure.yaml`):**
+A tree-like structure showing how pages are interconnected through links:
+
+```yaml
+root:
+  url: https://example.com/
+  children:
+    - url: https://example.com/about/
+      children:
+        - url: https://example.com/about/team/
+          children: []
+        - url: https://example.com/about/history/
+          children: []
+    - url: https://example.com/products/
+      children:
+        - url: https://example.com/products/category-a/
+          children: []
+orphans:
+  - url: https://example.com/old-page/ # Not reachable from homepage
+```
+
+**Key Features:**
+
+- **Circular Link Detection**: Pages involved in circular references are marked with `circular: true`
+- **Depth Limiting**: Structures deeper than 10 levels are marked as `truncated: true` to prevent excessive nesting
+- **Orphaned Pages**: Lists pages that exist but aren't reachable from the homepage
+- **Link-Based Structure**: Built from actual link relationships, not URL path patterns
+
+This helps identify:
+
+- Navigation structure issues
+- Orphaned content (pages not linked from anywhere)
+- Circular navigation patterns
+- Deep page hierarchies
+
+### State Management & Resume
+
+The crawler saves progress periodically (every 10 pages or 5 errors) to support resuming:
+
+- **State files**: Stored in `STATE_DIR` (default: `./crawl-data`) in YAML format
+- **Automatic resume**: Restart the scanner/crawler and it continues from where it left off
+- **Broken link recovery**: Previously failed pages are retried on resume
+- **Progress tracking**: View `crawl-state.yaml` to see current progress
 
 ## License
 
