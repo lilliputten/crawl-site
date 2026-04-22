@@ -2,7 +2,7 @@
 
 import * as path from 'path';
 import { CrawlConfig, CrawlState, PageData, LinkRelation } from '@/types';
-import { ensureDir, saveFile, fileExists, readYamlFile, writeYamlFile } from './file-utils';
+import { ensureDir, fileExists, readYamlFile, writeYamlFile } from './file-utils';
 import { Logger } from './logger';
 // import { formatError } from './error-formatter'; // TODO: Add error formatting utility if needed
 
@@ -368,7 +368,9 @@ export class StateManager {
     if (this.state.brokenLinks.length > 0) {
       const brokenLinksPath = path.join(this.stateDir, 'broken-links.yaml');
       await writeYamlFile(brokenLinksPath, this.state.brokenLinks.sort());
-      logger.info(`Broken links saved to ${brokenLinksPath} (${this.state.brokenLinks.length} links)`);
+      logger.info(
+        `Broken links saved to ${brokenLinksPath} (${this.state.brokenLinks.length} links)`
+      );
     } else {
       logger.info('No broken links to save');
     }

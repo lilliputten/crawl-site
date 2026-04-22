@@ -469,6 +469,36 @@ export class SiteScanner {
   }
 
   /**
+   * Check if page content exists on disk (from previous crawl)
+   */
+  private async pageExistsOnDisk(url: string): Promise<boolean> {
+    try {
+      const filePath = urlToFilePath(url, this.config.siteUrl, this.config.dest);
+      return await fs.promises
+        .access(filePath, fs.constants.F_OK)
+        .then(() => true)
+        .catch(() => false);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Read page content from disk
+   */
+  private async readPageFromDisk(url: string): Promise<string | null> {
+    try {
+      const filePath = urlToFilePath(url, this.config.siteUrl, this.config.dest);
+      return await fs.promises.readFile(filePath, 'utf-8');
+    } catch (error) {
+      logger.debug(
+        `Failed to read ${url} from disk: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return null;
+    }
+  }
+
+  /**
    * Crawl site to discover URLs
    */
   private async crawlForUrls(startUrl: string): Promise<void> {
@@ -496,36 +526,67 @@ export class SiteScanner {
         break;
       }
 
-      // Mark as visited using normalized URL
-      logger.info(`Scanning (${this.pages.length + 1}): ${url}`);
+      let html: string;
+      let title: string;
+      let fetchedFromNetwork = false;
 
       try {
-        // Build headers based on configuration
-        const headers = this.config.useBrowserHeaders
-          ? buildBrowserHeaders(this.config.userAgent)
-          : buildMinimalHeaders(this.config.userAgent);
+        // Check if page already exists on disk from previous crawl
+        const pageExists = await this.pageExistsOnDisk(url);
 
-        const response = await axios.get(url, {
-          timeout: this.config.requestTimeout,
-          headers,
-        });
+        if (pageExists) {
+          // Read from disk instead of fetching
+          logger.debug(`Reading cached page from disk: ${url}`);
 
-        const title = extractTitle(response.data);
-        const normalizedUrl = normalizeUrl(decodeUrl(url));
+          const cachedHtml = await this.readPageFromDisk(url);
+
+          if (cachedHtml) {
+            html = cachedHtml;
+            title = extractTitle(html);
+            logger.info(`✓ Loaded from cache: ${url}`);
+            // Mark as crawled since file exists
+            this.crawledPages.add(normalizedUrl);
+          } else {
+            // Failed to read from disk, fetch from network
+            throw new Error('Failed to read cached page');
+          }
+        } else {
+          // Loading from network
+          logger.info(`Loading (${this.pages.length + 1}): ${url}`);
+
+          // Fetch from network
+          fetchedFromNetwork = true;
+
+          // Build headers based on configuration
+          const headers = this.config.useBrowserHeaders
+            ? buildBrowserHeaders(this.config.userAgent)
+            : buildMinimalHeaders(this.config.userAgent);
+
+          const response = await axios.get(url, {
+            timeout: this.config.requestTimeout,
+            headers,
+          });
+
+          html = response.data;
+          title = extractTitle(html);
+
+          // Save page content to crawl-default folder
+          await this.savePageContent(url, html);
+
+          // Clear response data to free memory
+          response.data = null;
+        }
 
         this.pages.push({
           url: normalizedUrl,
           title,
         });
 
-        // Save page content to crawl-default folder
-        await this.savePageContent(url, response.data);
-
         // Extract links from the page - pass the ORIGINAL url, not normalized
-        const { internal, external } = this.extractLinks(response.data, url);
+        const { internal, external } = this.extractLinks(html, url);
 
         // Clear response data to free memory
-        response.data = null;
+        html = '';
 
         for (const link of internal) {
           // Check if URL should be excluded FIRST (before checking visitedUrls)
@@ -550,8 +611,12 @@ export class SiteScanner {
           this.externalLinks.add(link);
         }
 
-        await this.delayManager.wait();
-        this.delayManager.recordSuccess();
+        // Only wait and record success if we fetched from network
+        if (fetchedFromNetwork) {
+          await this.delayManager.wait();
+          this.delayManager.recordSuccess();
+        }
+        // No delay for cached pages - they're read instantly from disk
 
         // Save progress periodically (every 10 pages)
         if (this.pages.length % 10 === 0) {
@@ -579,7 +644,8 @@ export class SiteScanner {
           logger.error(
             `Max retries (${this.config.maxRetries}) reached for ${url}, marking as broken`
           );
-          this.visitedUrls.add(normalizedUrl);
+          // Don't add to visitedUrls - allow rescanning broken links in future runs
+          // this.visitedUrls.add(normalizedUrl);
         }
 
         this.delayManager.recordError();
