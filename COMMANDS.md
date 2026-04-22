@@ -25,7 +25,7 @@ pnpm start:build   # Build + run both scripts
 ## Development Tools
 
 ```bash
-pnpm clean         # Remove dist/, crawl-default/, crawled-content/
+pnpm clean         # Remove dist/, crawl-*/
 pnpm check-types   # TypeScript type checking (pretty output, no emit)
 pnpm lint          # Run oxlint for code style issues
 pnpm lint:fix      # Auto-fix linting issues

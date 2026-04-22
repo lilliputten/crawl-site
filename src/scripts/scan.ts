@@ -41,6 +41,7 @@ async function main() {
     logger.info(`=== Scan Complete: ${siteMap.urls.length} pages found ===`);
   } catch (error) {
     logger.error(`Scan failed: ${error instanceof Error ? error.message : String(error)}`);
+    debugger;
     process.exit(1);
   }
 }

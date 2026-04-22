@@ -174,8 +174,8 @@ export async function loadConfig(): Promise<CrawlConfig> {
     maxRetries: parseInt(process.env.MAX_RETRIES || '3', 10),
     retryDelayBase: parseInt(process.env.RETRY_DELAY_BASE || '2000', 10),
     requestTimeout: parseInt(process.env.REQUEST_TIMEOUT || '30000', 10),
-    dest: process.env.DEST || './crawled-content',
-    stateDir: process.env.STATE_DIR || './crawl-default',
+    dest: process.env.DEST || process.env.STATE_DIR || './crawl-default',
+    stateDir: process.env.STATE_DIR || process.env.DEST || './crawl-default',
     userAgent:
       process.env.USER_AGENT ||
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -189,13 +189,18 @@ export async function loadConfig(): Promise<CrawlConfig> {
   // Override with command line arguments
   const cliConfig = parseCommandLineArgs();
 
+  // Remove undefined values from cliConfig
+  const filteredCliConfig = Object.fromEntries(
+    Object.entries(cliConfig).filter(([_, value]) => value != undefined)
+  ) as Partial<CrawlConfig>;
+
   // Load exclusion rules from YAML files
   const yamlRules = await loadExcludeRules();
 
   // Merge exclude rules: env config < CLI args < YAML files
-  const mergedExclude = [...(envConfig.exclude || []), ...(cliConfig.exclude || []), ...yamlRules];
+  const mergedExclude = [...(envConfig.exclude || []), ...(filteredCliConfig.exclude || []), ...yamlRules];
 
-  const finalConfig = { ...envConfig, ...cliConfig, exclude: mergedExclude } as CrawlConfig;
+  const finalConfig = { ...envConfig, ...filteredCliConfig, exclude: mergedExclude } as CrawlConfig;
 
   // Validate required fields
   if (!finalConfig.siteUrl) {

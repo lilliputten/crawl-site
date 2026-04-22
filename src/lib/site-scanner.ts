@@ -64,7 +64,7 @@ export class SiteScanner {
   }
 
   /**
-   * Save page content to crawled-content folder
+   * Save page content to crawl-default folder
    */
   private async savePageContent(url: string, html: string): Promise<void> {
     try {
@@ -85,7 +85,7 @@ export class SiteScanner {
         pathname = pathname.endsWith('/') ? pathname + 'index.html' : pathname + '.html';
       }
 
-      // Use config.dest directly (already points to crawled-content folder)
+      // Use config.dest directly (already points to crawl-default folder)
       const filePath = path.join(this.config.dest, pathname);
 
       // Ensure directory exists and save HTML file
@@ -529,7 +529,7 @@ export class SiteScanner {
           title,
         });
 
-        // Save page content to crawled-content folder
+        // Save page content to crawl-default folder
         await this.savePageContent(url, response.data);
 
         // Extract links from the page - pass the ORIGINAL url, not normalized
@@ -759,6 +759,8 @@ export class SiteScanner {
       );
     }
 
+    logger.info('About to process link relations...');
+
     // Save link relations in hierarchical format (excluding self-references)
     logger.info(`Processing ${this.linkRelations.length} link relations...`);
 
@@ -787,10 +789,6 @@ export class SiteScanner {
             // Skip invalid URLs
           }
         });
-
-        logger.info(
-          `Separated: ${internalRelations.length} internal, ${externalRelations.length} external`
-        );
 
         // Save internal link relations in YAML format
         if (internalRelations.length > 0) {
