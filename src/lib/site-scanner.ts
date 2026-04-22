@@ -58,16 +58,36 @@ export class SiteScanner {
       logger.debug(`Progress saved: ${this.pages.length} pages scanned`);
     }
 
-    // Save link relations
+    // Save link relations in hierarchical format
     if (this.linkRelations.length > 0) {
       const linkRelationsPath = path.join(this.config.stateDir, 'link-relations.json');
-      const sortedRelations = [...this.linkRelations].sort((a, b) =>
-        a.sourceUrl.localeCompare(b.sourceUrl)
-      );
+
+      // Convert to hierarchical format: targetUrl -> [sourceUrls]
+      const hierarchicalRelations: Record<string, string[]> = {};
+      this.linkRelations.forEach((relation) => {
+        if (!hierarchicalRelations[relation.targetUrl]) {
+          hierarchicalRelations[relation.targetUrl] = [];
+        }
+        if (!hierarchicalRelations[relation.targetUrl].includes(relation.sourceUrl)) {
+          hierarchicalRelations[relation.targetUrl].push(relation.sourceUrl);
+        }
+      });
+
+      // Sort by target URL
+      const sortedRelations: Record<string, string[]> = {};
+      Object.keys(hierarchicalRelations)
+        .sort()
+        .forEach((key) => {
+          sortedRelations[key] = hierarchicalRelations[key].sort();
+        });
+
       await fs.promises.writeFile(
         linkRelationsPath,
         JSON.stringify(sortedRelations, null, 2),
         'utf-8'
+      );
+      logger.info(
+        `Link relations saved to ${linkRelationsPath} (${Object.keys(sortedRelations).length} target URLs)`
       );
     }
   }
@@ -187,7 +207,7 @@ export class SiteScanner {
 
       // Mark as visited using normalized URL
       this.visitedUrls.add(normalizedUrl);
-      logger.debug(`Scanning: ${url}`);
+      logger.info(`Scanning (${this.pages.length + 1}): ${url}`);
 
       try {
         const response = await axios.get(url, {
@@ -375,20 +395,36 @@ export class SiteScanner {
       );
     }
 
-    // Save link relations
+    // Save link relations in hierarchical format
     if (this.linkRelations.length > 0) {
       const linkRelationsPath = path.join(this.config.stateDir, 'link-relations.json');
-      // Sort by source URL for better readability
-      const sortedRelations = [...this.linkRelations].sort((a, b) =>
-        a.sourceUrl.localeCompare(b.sourceUrl)
-      );
+
+      // Convert to hierarchical format: targetUrl -> [sourceUrls]
+      const hierarchicalRelations: Record<string, string[]> = {};
+      this.linkRelations.forEach((relation) => {
+        if (!hierarchicalRelations[relation.targetUrl]) {
+          hierarchicalRelations[relation.targetUrl] = [];
+        }
+        if (!hierarchicalRelations[relation.targetUrl].includes(relation.sourceUrl)) {
+          hierarchicalRelations[relation.targetUrl].push(relation.sourceUrl);
+        }
+      });
+
+      // Sort by target URL
+      const sortedRelations: Record<string, string[]> = {};
+      Object.keys(hierarchicalRelations)
+        .sort()
+        .forEach((key) => {
+          sortedRelations[key] = hierarchicalRelations[key].sort();
+        });
+
       await fs.promises.writeFile(
         linkRelationsPath,
         JSON.stringify(sortedRelations, null, 2),
         'utf-8'
       );
       logger.info(
-        `Link relations saved to ${linkRelationsPath} (${sortedRelations.length} relations)`
+        `Link relations saved to ${linkRelationsPath} (${Object.keys(sortedRelations).length} target URLs)`
       );
     }
   }

@@ -254,6 +254,7 @@ export class StateManager {
 
   /**
    * Save link relations to a separate JSON file for easy analysis
+   * Format: { targetUrl: [sourceUrl1, sourceUrl2, ...] }
    */
   async saveLinkRelations(): Promise<void> {
     const fs = await import('fs');
@@ -263,10 +264,26 @@ export class StateManager {
     const linkRelationsPath = path.join(this.stateDir, 'link-relations.json');
     await ensureDir(this.stateDir);
 
-    // Sort by source URL for better readability
-    const sortedRelations = [...this.state.linkRelations].sort((a, b) =>
-      a.sourceUrl.localeCompare(b.sourceUrl)
-    );
+    // Convert to hierarchical format: targetUrl -> [sourceUrls]
+    const hierarchicalRelations: Record<string, string[]> = {};
+
+    this.state.linkRelations.forEach((relation) => {
+      if (!hierarchicalRelations[relation.targetUrl]) {
+        hierarchicalRelations[relation.targetUrl] = [];
+      }
+      // Avoid duplicate source URLs for the same target
+      if (!hierarchicalRelations[relation.targetUrl].includes(relation.sourceUrl)) {
+        hierarchicalRelations[relation.targetUrl].push(relation.sourceUrl);
+      }
+    });
+
+    // Sort by target URL for better readability
+    const sortedRelations: Record<string, string[]> = {};
+    Object.keys(hierarchicalRelations)
+      .sort()
+      .forEach((key) => {
+        sortedRelations[key] = hierarchicalRelations[key].sort();
+      });
 
     await fs.promises.writeFile(
       linkRelationsPath,
@@ -274,7 +291,7 @@ export class StateManager {
       'utf-8'
     );
     logger.info(
-      `Link relations saved to ${linkRelationsPath} (${sortedRelations.length} relations)`
+      `Link relations saved to ${linkRelationsPath} (${Object.keys(sortedRelations).length} target URLs)`
     );
   }
 }
