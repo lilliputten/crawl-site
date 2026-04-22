@@ -283,11 +283,16 @@ export class SiteScanner {
       }
     });
 
-    // Add edges from link relations (only internal links)
+    // Add edges from link relations (only internal links, excluding filtered URLs)
     const siteDomain = new URL(this.config.siteUrl).host;
     this.linkRelations.forEach((relation) => {
       // Skip self-references
       if (relation.sourceUrl === relation.targetUrl) {
+        return;
+      }
+
+      // Skip if target URL should be excluded
+      if (isUrlExcluded(relation.targetUrl, this.config.exclude, this.config)) {
         return;
       }
 
@@ -311,30 +316,35 @@ export class SiteScanner {
       ? this.config.siteUrl
       : this.config.siteUrl + '/';
 
-    const visited = new Set<string>();
     const structure: Record<string, any> = {};
+
+    const currentPath: Set<string> = new Set();
 
     // Recursive function to build tree, with circular link detection
     const buildNode = (url: string, depth: number = 0): any => {
-      console.log('[site-scanner:buildNode]', depth, url);
-      // Prevent infinite recursion from circular links
-      if (visited.has(url)) {
+      // console.log('[site-scanner:buildNode]', depth, url);
+
+      // Prevent infinite recursion from circular links by checking current path
+      if (currentPath.has(url)) {
+        // console.log('[site-scanner:buildNode] CIRCULAR DETECTED:', url);
         return { url, circular: true, children: [] };
       }
 
-      // Limit depth to prevent excessively deep structures
-      if (depth > 10) {
+      // Limit depth to prevent excessively deep structures (reduced from 10 to 5)
+      if (depth > 5) {
+        // console.log('[site-scanner:buildNode] DEPTH LIMIT REACHED:', url, 'at depth', depth);
         return { url, truncated: true, children: [] };
       }
 
-      visited.add(url);
+      // Add current URL to the path
+      currentPath.add(url);
 
       const children = adjacencyList[url] ? Array.from(adjacencyList[url]) : [];
+      console.log('[site-scanner:buildNode] Processing', url, 'with', children.length, 'children');
+
       const childNodes = children
         .map((childUrl) => buildNode(childUrl, depth + 1))
         .sort((a, b) => a.url.localeCompare(b.url));
-
-      visited.delete(url); // Backtrack for other paths
 
       return {
         url,
@@ -700,7 +710,6 @@ export class SiteScanner {
         const hierarchicalStructure = this.buildHierarchicalSitemap();
         const hierarchicalSitemapPath = path.join(this.config.stateDir, 'sitemap-structure.yaml');
         await writeYamlFile(hierarchicalSitemapPath, hierarchicalStructure);
-        debugger;
         logger.info(`Hierarchical sitemap structure saved to ${hierarchicalSitemapPath}`);
       } catch (error) {
         logger.error(

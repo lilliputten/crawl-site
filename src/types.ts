@@ -14,6 +14,7 @@ export interface CrawlConfig {
   useBrowserHeaders: boolean; // Impersonate as normal browser
   exclude: ExcludeRule[]; // URL exclusion rules
   showExclusionMessages: boolean; // Show/hide URL exclusion messages (default: false)
+  maxTreeDepth: number; // Maximum depth for hierarchical sitemap tree building (default: 5)
 }
 
 // URL exclusion rule types

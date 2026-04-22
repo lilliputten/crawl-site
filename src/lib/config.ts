@@ -75,7 +75,15 @@ export function loadConfig(): CrawlerConfig {
   const maxPages = Number(getValue('max-pages', 0));
   const logLevel = getValue('log-level', 'info');
   const useBrowserHeaders = getValue('use-browser-headers', false);
-  const showExclusionMessages = getValue('show-exclusion-messages', false);
+  
+  // Parse showExclusionMessages - handle string from env vars
+  const showExclusionMessagesRaw = getValue('show-exclusion-messages', false);
+  const showExclusionMessages = typeof showExclusionMessagesRaw === 'string' 
+    ? showExclusionMessagesRaw.toLowerCase() === 'true'
+    : Boolean(showExclusionMessagesRaw);
+  
+  // Parse maxTreeDepth - handle string from env vars
+  const maxTreeDepth = Number(getValue('max-tree-depth', 5));
 
   // Parse exclude rules from CLI or default to empty array
   let exclude: ExcludeRule[] = [];
@@ -107,5 +115,6 @@ export function loadConfig(): CrawlerConfig {
     useBrowserHeaders,
     exclude,
     showExclusionMessages,
+    maxTreeDepth,
   };
 }

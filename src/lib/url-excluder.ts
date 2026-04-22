@@ -66,7 +66,7 @@ export function isUrlExcluded(url: string, rules: ExcludeRule[], config?: CrawlC
   for (const rule of rules) {
     if (matchesRule(url, rule)) {
       // Only log if showExclusionMessages is true (default: false)
-      if (config?.showExclusionMessages !== false) {
+      if (!!config?.showExclusionMessages) {
         logger.info(`⊘ URL excluded by rule [${rule.mode}: "${rule.string}"]: ${url}`);
       }
       return true;
