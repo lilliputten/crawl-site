@@ -43,7 +43,22 @@ export class StateManager {
   async initialize(): Promise<void> {
     await ensureDir(this.stateDir);
 
-    if (await fileExists(this.stateFile)) {
+    // Load broken links from broken-links.yaml first (if exists)
+    const brokenLinksPath = path.join(this.stateDir, 'broken-links.yaml');
+    if (fileExists(brokenLinksPath)) {
+      try {
+        const brokenLinksData = await readYamlFile<string[]>(brokenLinksPath);
+        if (brokenLinksData && Array.isArray(brokenLinksData)) {
+          this.state.brokenLinks = brokenLinksData;
+          logger.info(`Loaded ${this.state.brokenLinks.length} broken links from broken-links.yaml`);
+        }
+      } catch (error) {
+        logger.warn('Failed to load broken-links.yaml:', error);
+      }
+    }
+
+    debugger;
+    if (fileExists(this.stateFile)) {
       try {
         const data = await readYamlFile<any>(this.stateFile);
 
@@ -57,7 +72,8 @@ export class StateManager {
           queued: data.queued || [],
           completed: new Map(data.completed || []),
           failed: new Map(data.failed || []),
-          brokenLinks: data.brokenLinks || [],
+          // Keep broken links loaded from broken-links.yaml, or fall back to state file
+          brokenLinks: this.state.brokenLinks.length > 0 ? this.state.brokenLinks : (data.brokenLinks || []),
           externalLinks: new Set(data.externalLinks || []),
           linkRelations: data.linkRelations || [],
           lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),

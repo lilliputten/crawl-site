@@ -504,22 +504,32 @@ export class SiteScanner {
 
     while (queue.length > 0) {
       const url = queue.shift()!;
-      const normalizedUrl = normalizeUrl(decodeUrl(url));
+      const normalized = normalizeUrl(decodeUrl(url));
+
+      /* // DEBUG
+       * if (normalized.includes('/аналитика-цен/')) {
+       *   console.log('[site-scanner:crawlForUrls]', {
+       *     url,
+       *     normalized,
+       *   });
+       *   debugger;
+       * }
+       */
 
       // Skip broken links
-      if (this.brokenLinks.has(normalizedUrl)) {
+      if (this.brokenLinks.has(normalized)) {
         continue; // Skip processing this link
       }
 
       // Check if already visited (using normalized URL for comparison)
-      if (this.visitedUrls.has(normalizedUrl)) {
+      if (this.visitedUrls.has(normalized)) {
         continue;
       }
 
       // Check if URL should be excluded BEFORE processing (use normalized URL)
-      if (isUrlExcluded(normalizedUrl, this.config.exclude, this.config)) {
+      if (isUrlExcluded(normalized, this.config.exclude, this.config)) {
         this.excludedUrlsCount++;
-        this.visitedUrls.add(normalizedUrl); // Mark as visited to avoid re-queuing
+        this.visitedUrls.add(normalized); // Mark as visited to avoid re-queuing
         continue;
       }
 
@@ -548,7 +558,7 @@ export class SiteScanner {
             title = extractTitle(html);
             logger.info(`✓ Loaded from cache: ${url}`);
             // Mark as crawled since file exists
-            this.crawledPages.add(normalizedUrl);
+            this.crawledPages.add(normalized);
           } else {
             // Failed to read from disk, fetch from network
             throw new Error('Failed to read cached page');
@@ -581,7 +591,7 @@ export class SiteScanner {
         }
 
         this.pages.push({
-          url: normalizedUrl,
+          url: normalized,
           title,
         });
 
@@ -628,7 +638,7 @@ export class SiteScanner {
             `Progress: ${this.pages.length} pages scanned, ${this.brokenLinks.size} broken links found`
           );
         }
-        this.visitedUrls.add(normalizedUrl);
+        this.visitedUrls.add(normalized);
       } catch (error) {
         logger.error(`Failed to scan ${url}:`, formatAxiosError(error));
 
@@ -673,6 +683,9 @@ export class SiteScanner {
       elements.forEach((element) => {
         const href = element.getAttribute('href');
         if (href) {
+          if (href.startsWith('#') || href.startsWith('tel:') || href.startsWith('mailto:')) {
+            return;
+          }
           try {
             // Handle relative URLs - ensure baseUrl ends with / for proper resolution
             // If baseUrl doesn't end with /, add it temporarily for URL resolution
@@ -681,6 +694,18 @@ export class SiteScanner {
 
             // Normalize for tracking/storage only
             const normalized = normalizeUrl(decodeUrl(fullUrl));
+
+            /* // DEBUG
+             * if (normalized.includes('/аналитика-цен/')) {
+             *   console.log('[site-scanner:extractLinks]', {
+             *     baseUrlForResolution,
+             *     fullUrl,
+             *     normalized,
+             *     href,
+             *   });
+             *   debugger;
+             * }
+             */
 
             // Skip if this link is already marked as broken
             if (this.brokenLinks.has(normalized)) {
