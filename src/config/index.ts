@@ -137,6 +137,12 @@ export function parseCommandLineArgs(): Partial<CrawlConfig> {
         : Boolean(noColorRaw)
       : undefined;
 
+  // Parse maxDelay
+  config.maxDelay =
+    getValue('max-delay', undefined) !== undefined
+      ? Number(getValue('max-delay', undefined))
+      : undefined;
+
   // Parse exclude rules from CLI
   try {
     const excludeRaw = getValue('exclude', undefined);
@@ -220,6 +226,7 @@ export async function loadConfig(): Promise<CrawlConfig> {
     useBrowserHeaders: process.env.USE_BROWSER_HEADERS === 'true',
     exclude: process.env.EXCLUDE_RULES ? JSON.parse(process.env.EXCLUDE_RULES) : [],
     noColor: process.env.NO_COLOR === 'true' || process.env.NO_COLOR === '1',
+    maxDelay: parseInt(process.env.MAX_DELAY || '10000', 10),
   };
 
   // Override with command line arguments

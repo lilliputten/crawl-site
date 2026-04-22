@@ -2,7 +2,7 @@
 
 import * as path from 'path';
 import { CrawlConfig, CrawlState, PageData, LinkRelation } from '@/types';
-import { ensureDir, saveFile, fileExists, readYamlFile } from './file-utils';
+import { ensureDir, saveFile, fileExists, readYamlFile, writeYamlFile } from './file-utils';
 import { Logger } from './logger';
 // import { formatError } from './error-formatter'; // TODO: Add error formatting utility if needed
 
@@ -80,7 +80,7 @@ export class StateManager {
    */
   async saveState(): Promise<void> {
     try {
-      // Convert Maps and Sets to arrays for JSON serialization
+      // Convert Maps and Sets to arrays for serialization
       const data = {
         queued: this.state.queued,
         completed: Array.from(this.state.completed.entries()),
@@ -91,7 +91,7 @@ export class StateManager {
         lastProcessed: this.state.lastProcessed.toISOString(),
       };
 
-      await saveFile(this.stateFile, JSON.stringify(data, null, 2));
+      await writeYamlFile(this.stateFile, data);
       logger.debug('State saved successfully');
     } catch (error) {
       logger.error(
@@ -273,10 +273,6 @@ export class StateManager {
    * Format: { targetUrl: [sourceUrl1, sourceUrl2, ...] }
    */
   async saveLinkRelations(): Promise<void> {
-    const fs = await import('fs');
-    const path = await import('path');
-    const { ensureDir } = await import('./file-utils');
-
     await ensureDir(this.stateDir);
 
     // Get site domain to separate internal/external
@@ -336,10 +332,10 @@ export class StateManager {
 
     // Save internal link relations
     if (internalRelations.length > 0) {
-      const internalPath = path.join(this.stateDir, 'internal-link-relations.json');
+      const internalPath = path.join(this.stateDir, 'internal-link-relations.yaml');
       const sortedInternal = convertToHierarchical(internalRelations);
 
-      await fs.promises.writeFile(internalPath, JSON.stringify(sortedInternal, null, 2), 'utf-8');
+      await writeYamlFile(internalPath, sortedInternal);
       logger.info(
         `Internal link relations saved to ${internalPath} (${Object.keys(sortedInternal).length} target URLs)`
       );
@@ -347,10 +343,10 @@ export class StateManager {
 
     // Save external link relations
     if (externalRelations.length > 0) {
-      const externalPath = path.join(this.stateDir, 'external-link-relations.json');
+      const externalPath = path.join(this.stateDir, 'external-link-relations.yaml');
       const sortedExternal = convertToHierarchical(externalRelations);
 
-      await fs.promises.writeFile(externalPath, JSON.stringify(sortedExternal, null, 2), 'utf-8');
+      await writeYamlFile(externalPath, sortedExternal);
       logger.info(
         `External link relations saved to ${externalPath} (${Object.keys(sortedExternal).length} target URLs)`
       );
@@ -359,6 +355,22 @@ export class StateManager {
     // Log summary if no relations found
     if (internalRelations.length === 0 && externalRelations.length === 0) {
       logger.debug('No link relations to save');
+    }
+
+    // Also save broken links to a separate file
+    await this.saveBrokenLinks();
+  }
+
+  /**
+   * Save broken links to a separate file
+   */
+  async saveBrokenLinks(): Promise<void> {
+    if (this.state.brokenLinks.length > 0) {
+      const brokenLinksPath = path.join(this.stateDir, 'broken-links.yaml');
+      await writeYamlFile(brokenLinksPath, this.state.brokenLinks.sort());
+      logger.info(`Broken links saved to ${brokenLinksPath} (${this.state.brokenLinks.length} links)`);
+    } else {
+      logger.info('No broken links to save');
     }
   }
 }

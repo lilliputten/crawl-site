@@ -497,7 +497,6 @@ export class SiteScanner {
       }
 
       // Mark as visited using normalized URL
-      this.visitedUrls.add(normalizedUrl);
       logger.info(`Scanning (${this.pages.length + 1}): ${url}`);
 
       try {
@@ -561,6 +560,7 @@ export class SiteScanner {
             `Progress: ${this.pages.length} pages scanned, ${this.brokenLinks.size} broken links found`
           );
         }
+        this.visitedUrls.add(normalizedUrl);
       } catch (error) {
         logger.error(`Failed to scan ${url}:`, formatAxiosError(error));
 
@@ -579,6 +579,7 @@ export class SiteScanner {
           logger.error(
             `Max retries (${this.config.maxRetries}) reached for ${url}, marking as broken`
           );
+          this.visitedUrls.add(normalizedUrl);
         }
 
         this.delayManager.recordError();
@@ -609,8 +610,10 @@ export class SiteScanner {
         const href = element.getAttribute('href');
         if (href) {
           try {
-            // Handle relative URLs - keep ORIGINAL URL for fetching
-            const fullUrl = new URL(href, baseUrl).toString();
+            // Handle relative URLs - ensure baseUrl ends with / for proper resolution
+            // If baseUrl doesn't end with /, add it temporarily for URL resolution
+            const baseUrlForResolution = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+            const fullUrl = new URL(href, baseUrlForResolution).toString();
 
             // Normalize for tracking/storage only
             const normalized = normalizeUrl(decodeUrl(fullUrl));

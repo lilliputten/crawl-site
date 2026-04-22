@@ -187,6 +187,17 @@ export class WebCrawler {
 
         if (!success) {
           this.stateManager.markFailed(nextUrl, String(error));
+          
+          // Add to broken links if it's an internal link
+          try {
+            const targetDomain = new URL(nextUrl).host;
+            const siteDomain = new URL(this.config.siteUrl).host;
+            if (targetDomain === siteDomain) {
+              this.stateManager.addBrokenLink(nextUrl);
+            }
+          } catch {
+            // Skip invalid URLs
+          }
 
           // Save state periodically on errors (every 5 failures)
           const stats = this.stateManager.getStats();

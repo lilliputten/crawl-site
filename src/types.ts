@@ -16,6 +16,7 @@ export interface CrawlConfig {
   showExclusionMessages: boolean; // Show/hide URL exclusion messages (default: false)
   maxTreeDepth: number; // Maximum depth for hierarchical sitemap tree building (default: 5)
   noColor: boolean; // Disable colored console output (default: false)
+  maxDelay: number; // Maximum delay cap for exponential backoff (default: 10000ms)
 }
 
 // URL exclusion rule types

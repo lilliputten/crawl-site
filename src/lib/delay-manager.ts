@@ -16,7 +16,8 @@ export class DelayManager {
   getCurrentDelay(): number {
     const baseDelay = this.config.crawlDelay;
     const multiplier = Math.pow(2, this.consecutiveErrors);
-    return Math.min(baseDelay * multiplier, 60000); // Cap at 60 seconds
+    const delay = baseDelay * multiplier;
+    return Math.min(delay, this.config.maxDelay); // Cap at configured max delay
   }
 
   /**
