@@ -14,7 +14,7 @@ async function main() {
     logger.info('=== Site Scanner Starting ===');
 
     // Load and validate configuration
-    const config = loadConfig();
+    const config = await loadConfig();
     validateConfig(config);
 
     logger.debug('Configuration loaded:', {
@@ -22,6 +22,7 @@ async function main() {
       sitemapCount: config.sitemapUrls.length,
       crawlDelay: config.crawlDelay,
       dest: config.dest,
+      excludeRules: config.exclude.length,
     });
 
     // Initialize components

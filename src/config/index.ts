@@ -50,13 +50,63 @@ export function parseCommandLineArgs(): Partial<CrawlConfig> {
       config.logLevel = arg.split('=')[1] as CrawlConfig['logLevel'];
     } else if (arg.startsWith('--use-browser-headers=')) {
       config.useBrowserHeaders = arg.split('=')[1] === 'true';
+    } else if (arg.startsWith('--exclude=')) {
+      config.exclude = JSON.parse(arg.split('=')[1]);
     }
   }
 
   return config;
 }
 
-export function loadConfig(): CrawlConfig {
+/**
+ * Load exclusion rules from YAML files
+ * Priority: exclude.local.yaml > exclude.yaml > env config
+ */
+async function loadExcludeRules(): Promise<Array<{ mode: string; string: string }>> {
+  const yaml = await import('js-yaml');
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const rules: Array<{ mode: string; string: string }> = [];
+
+  // Try to load exclude.yaml (project-level rules)
+  const excludeYamlPath = path.join(process.cwd(), 'exclude.yaml');
+  try {
+    if (fs.existsSync(excludeYamlPath)) {
+      const fileContents = fs.readFileSync(excludeYamlPath, 'utf8');
+      const loadedRules = yaml.load(fileContents) as Array<{ mode: string; string: string }>;
+      if (Array.isArray(loadedRules)) {
+        rules.push(...loadedRules);
+        console.log(`Loaded ${loadedRules.length} exclusion rules from exclude.yaml`);
+      }
+    }
+  } catch (error) {
+    console.warn(
+      `Warning: Failed to load exclude.yaml: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  // Try to load exclude.local.yaml (local overrides, higher priority)
+  const excludeLocalPath = path.join(process.cwd(), 'exclude.local.yaml');
+  try {
+    if (fs.existsSync(excludeLocalPath)) {
+      const fileContents = fs.readFileSync(excludeLocalPath, 'utf8');
+      const loadedRules = yaml.load(fileContents) as Array<{ mode: string; string: string }>;
+      if (Array.isArray(loadedRules)) {
+        rules.push(...loadedRules);
+        console.log(`Loaded ${loadedRules.length} exclusion rules from exclude.local.yaml`);
+      }
+    }
+  } catch (error) {
+    console.warn(
+      `Warning: Failed to load exclude.local.yaml: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  return rules;
+}
+
+export async function loadConfig(): Promise<CrawlConfig> {
   const envConfig: Partial<CrawlConfig> = {
     siteUrl: process.env.SITE_URL || '',
     sitemapUrls: process.env.SITEMAP_URLS ? JSON.parse(process.env.SITEMAP_URLS) : [],
@@ -73,12 +123,19 @@ export function loadConfig(): CrawlConfig {
     maxPages: parseInt(process.env.MAX_PAGES || '0', 10),
     logLevel: (process.env.LOG_LEVEL as CrawlConfig['logLevel']) || 'info',
     useBrowserHeaders: process.env.USE_BROWSER_HEADERS === 'true',
+    exclude: process.env.EXCLUDE_RULES ? JSON.parse(process.env.EXCLUDE_RULES) : [],
   };
 
   // Override with command line arguments
   const cliConfig = parseCommandLineArgs();
 
-  const finalConfig = { ...envConfig, ...cliConfig } as CrawlConfig;
+  // Load exclusion rules from YAML files
+  const yamlRules = await loadExcludeRules();
+
+  // Merge exclude rules: env config < CLI args < YAML files
+  const mergedExclude = [...(envConfig.exclude || []), ...(cliConfig.exclude || []), ...yamlRules];
+
+  const finalConfig = { ...envConfig, ...cliConfig, exclude: mergedExclude } as CrawlConfig;
 
   // Validate required fields
   if (!finalConfig.siteUrl) {

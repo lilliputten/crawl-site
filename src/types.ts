@@ -12,6 +12,15 @@ export interface CrawlConfig {
   maxPages: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   useBrowserHeaders: boolean; // Impersonate as normal browser
+  exclude: ExcludeRule[]; // URL exclusion rules
+}
+
+// URL exclusion rule types
+export type ExcludeMode = 'prefix' | 'suffix' | 'contains' | 'regex' | 'exact';
+
+export interface ExcludeRule {
+  mode: ExcludeMode;
+  string: string;
 }
 
 // Keep CrawlerConfig as an alias for backward compatibility

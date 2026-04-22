@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
 import minimist from 'minimist';
-import { CrawlerConfig } from '@/types';
+import { CrawlerConfig, ExcludeRule } from '@/types';
 
 export function loadConfig(): CrawlerConfig {
   // Load .env file
@@ -76,6 +76,18 @@ export function loadConfig(): CrawlerConfig {
   const logLevel = getValue('log-level', 'info');
   const useBrowserHeaders = getValue('use-browser-headers', false);
 
+  // Parse exclude rules from CLI or default to empty array
+  let exclude: ExcludeRule[] = [];
+  try {
+    const excludeRaw = getValue('exclude', '[]');
+    const parsed = typeof excludeRaw === 'string' ? JSON.parse(excludeRaw) : excludeRaw;
+    if (Array.isArray(parsed)) {
+      exclude = parsed as ExcludeRule[];
+    }
+  } catch (error) {
+    console.warn('Warning: Failed to parse exclude rules:', error);
+  }
+
   const sitemapUrls = parseSitemapUrls(sitemapUrlsRaw);
 
   return {
@@ -92,5 +104,6 @@ export function loadConfig(): CrawlerConfig {
     maxPages,
     logLevel,
     useBrowserHeaders,
+    exclude,
   };
 }

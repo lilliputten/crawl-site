@@ -1,0 +1,56 @@
+# URL Exclusion Rules Example
+# This file demonstrates how to exclude URLs from crawling
+# Copy this file to exclude.yaml or exclude.local.yaml and modify as needed
+#
+# Priority order (highest to lowest):
+# 1. exclude.local.yaml (local overrides, not committed to repo)
+# 2. exclude.yaml (project rules, can be committed)
+# 3. EXCLUDE_RULES environment variable
+# 4. --exclude CLI argument
+#
+# Available modes:
+# - prefix: URL starts with the string
+# - suffix: URL ends with the string
+# - contains: URL contains the string
+# - exact: URL exactly matches the string
+# - regex: URL matches the regular expression pattern
+
+# Exclude admin pages
+- mode: prefix
+  string: '/admin/'
+
+# Exclude login and auth pages
+- mode: prefix
+  string: '/auth/'
+- mode: prefix
+  string: '/login'
+
+# Exclude PDF files
+- mode: suffix
+  string: '.pdf'
+
+# Exclude image files
+- mode: suffix
+  string: '.jpg'
+- mode: suffix
+  string: '.png'
+- mode: suffix
+  string: '.gif'
+
+# Exclude URLs containing session parameters
+- mode: contains
+  string: 'session='
+- mode: contains
+  string: 'token='
+
+# Exclude specific page
+- mode: exact
+  string: 'https://example.com/specific-page'
+
+# Exclude URLs matching a pattern (e.g., pagination)
+- mode: regex
+  string: "\\?page=\\d+"
+
+# Exclude search results
+- mode: prefix
+  string: '/search?'

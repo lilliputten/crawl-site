@@ -53,6 +53,10 @@ USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, 
 # Use full browser headers (Accept, Accept-Language, etc.) to impersonate a real browser
 USE_BROWSER_HEADERS=false
 
+# URL Exclusion Rules (JSON array format)
+# Example: EXCLUDE_RULES=[{"mode":"prefix","string":"/admin/"},{"mode":"suffix","string":".pdf"}]
+EXCLUDE_RULES=[]
+
 # Respect robots.txt
 RESPECT_ROBOTS_TXT=true
 
@@ -105,6 +109,7 @@ Available arguments:
 - `--state-dir=` - State storage directory
 - `--user-agent=` - Custom user agent string
 - `--use-browser-headers=` - Use realistic browser headers (true/false)
+- `--exclude=` - JSON array of URL exclusion rules
 - `--respect-robots-txt=` - Respect robots.txt (true/false)
 - `--max-pages=` - Maximum pages to crawl (0 = unlimited)
 - `--log-level=` - Log level (debug/info/warn/error)
@@ -430,6 +435,78 @@ When enabled, the crawler sends headers that mimic a real Chrome browser:
 - `Connection`: Keep-alive connections
 
 **Note:** The default User-Agent is already set to a realistic Chrome browser string. Enable `USE_BROWSER_HEADERS` for additional header fields.
+
+### URL Exclusion Rules
+
+Exclude specific URLs from crawling using flexible matching rules. This helps avoid crawling unnecessary pages like admin panels, search results, or large media files.
+
+**Configuration Sources (Priority Order):**
+
+1. `exclude.local.yaml` - Local overrides (not committed to git)
+2. `exclude.yaml` - Project-level rules (can be committed)
+3. `EXCLUDE_RULES` environment variable
+4. `--exclude` CLI argument
+
+All sources are merged, so you can combine rules from multiple sources.
+
+**Available Matching Modes:**
+
+- **prefix**: URL starts with the specified string
+- **suffix**: URL ends with the specified string
+- **contains**: URL contains the specified string
+- **exact**: URL exactly matches the specified string
+- **regex**: URL matches the regular expression pattern
+
+**Example exclude.yaml:**
+
+```yaml
+# Exclude admin and auth pages
+- mode: prefix
+  string: '/admin/'
+- mode: prefix
+  string: '/auth/'
+
+# Exclude PDF and image files
+- mode: suffix
+  string: '.pdf'
+- mode: suffix
+  string: '.jpg'
+
+# Exclude URLs with session parameters
+- mode: contains
+  string: 'session='
+
+# Exclude pagination patterns
+- mode: regex
+  string: "\\?page=\\d+"
+
+# Exclude specific page
+- mode: exact
+  string: 'https://example.com/specific-page'
+```
+
+**Environment Variable Example:**
+
+```env
+EXCLUDE_RULES=[{"mode":"prefix","string":"/admin/"},{"mode":"suffix","string":".pdf"}]
+```
+
+**CLI Example:**
+
+```bash
+pnpm scan --exclude='[{"mode":"prefix","string":"/api/"}]'
+```
+
+**Use Cases:**
+
+- Skip admin/backend pages (`/admin/`, `/wp-admin/`)
+- Exclude large media files (`.pdf`, `.zip`, `.mp4`)
+- Avoid dynamic content (`/search?`, `?sort=`)
+- Skip authentication flows (`/login`, `/oauth/`)
+- Exclude API endpoints (`/api/`, `/graphql`)
+- Filter out tracking parameters (`?utm_`, `?fbclid=`)
+
+**Tip:** Use `exclude.local.yaml` for personal testing rules that shouldn't be shared with the team.
 
 ### Content Organization
 

@@ -8,6 +8,10 @@ dist/
 .env.local
 .env.*.local
 
+# Exclusion rules (local overrides)
+exclude.yaml
+exclude.local.yaml
+
 # Crawl data and content
 crawl-data/
 crawled-content/

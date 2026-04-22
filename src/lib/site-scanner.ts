@@ -9,6 +9,7 @@ import { Logger } from './logger';
 import { normalizeUrl, decodeUrl, isSameDomain } from './url-utils';
 import { formatAxiosError } from './error-utils';
 import { writeYamlFile, ensureDir } from './file-utils';
+import { isUrlExcluded } from './url-excluder';
 import { JSDOM } from 'jsdom';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -446,6 +447,12 @@ export class SiteScanner {
 
         for (const page of pages) {
           if (isSameDomain(page.url, this.config.siteUrl) && !this.visitedUrls.has(page.url)) {
+            // Check if URL should be excluded
+            if (isUrlExcluded(page.url, this.config.exclude)) {
+              logger.debug(`Skipping excluded URL from sitemap: ${page.url}`);
+              continue;
+            }
+
             if (!this.config.respectRobotsTxt || isUrlAllowed(page.url, null)) {
               this.pages.push(page);
               this.visitedUrls.add(page.url);
@@ -513,6 +520,12 @@ export class SiteScanner {
         for (const link of internal) {
           const normalizedLink = normalizeUrl(decodeUrl(link));
           if (!this.visitedUrls.has(normalizedLink)) {
+            // Check if URL should be excluded
+            if (isUrlExcluded(link, this.config.exclude)) {
+              logger.debug(`Skipping excluded URL: ${link}`);
+              continue;
+            }
+
             if (!this.config.respectRobotsTxt || isUrlAllowed(link, null)) {
               queue.push(link);
             }

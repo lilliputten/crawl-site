@@ -13,7 +13,7 @@ async function main() {
     logger.info('=== Site Crawler Starting ===');
 
     // Load and validate configuration
-    const config = loadConfig();
+    const config = await loadConfig();
     validateConfig(config);
 
     logger.debug('Configuration loaded:', {
@@ -21,6 +21,7 @@ async function main() {
       crawlDelay: config.crawlDelay,
       maxRetries: config.maxRetries,
       dest: config.dest,
+      excludeRules: config.exclude.length,
     });
 
     // Initialize components
