@@ -100,7 +100,7 @@ export class WebCrawler {
           );
         }
 
-        await this.delayManager.wait();
+        // No delay for skipped pages - they're already on disk
         continue;
       }
 
