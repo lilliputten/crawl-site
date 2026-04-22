@@ -115,8 +115,6 @@ export class SiteScanner {
    * Save current progress to files (called periodically during scanning)
    */
   private async saveProgress(): Promise<void> {
-    const { ensureDir } = await import('./file-utils');
-
     await ensureDir(this.config.stateDir);
 
     // Update broken links by removing successfully crawled pages
@@ -508,6 +506,11 @@ export class SiteScanner {
       const url = queue.shift()!;
       const normalizedUrl = normalizeUrl(decodeUrl(url));
 
+      // Skip broken links
+      if (this.brokenLinks.has(normalizedUrl)) {
+        continue; // Skip processing this link
+      }
+
       // Check if already visited (using normalized URL for comparison)
       if (this.visitedUrls.has(normalizedUrl)) {
         continue;
@@ -644,17 +647,12 @@ export class SiteScanner {
           logger.error(
             `Max retries (${this.config.maxRetries}) reached for ${url}, marking as broken`
           );
-          // Don't add to visitedUrls - allow rescanning broken links in future runs
-          // this.visitedUrls.add(normalizedUrl);
+          // Save broken links on each error
+          await this.saveBrokenLinks(true);
         }
 
         this.delayManager.recordError();
         await this.delayManager.wait();
-
-        // Save progress even on errors
-        if (this.pages.length % 10 === 0 || this.brokenLinks.size % 5 === 0) {
-          await this.saveProgress();
-        }
       }
     }
   }
@@ -683,6 +681,11 @@ export class SiteScanner {
 
             // Normalize for tracking/storage only
             const normalized = normalizeUrl(decodeUrl(fullUrl));
+
+            // Skip if this link is already marked as broken
+            if (this.brokenLinks.has(normalized)) {
+              return; // Skip processing this link
+            }
 
             // Get link text
             const linkText = element.textContent?.trim() || '';
@@ -723,12 +726,22 @@ export class SiteScanner {
     }
   }
 
+  private async saveBrokenLinks(silent?: boolean): Promise<void> {
+    // Save broken links in YAML format (after removing successfully crawled pages)
+    if (this.brokenLinks.size > 0) {
+      const brokenLinksPath = path.join(this.config.stateDir, 'broken-links.yaml');
+      await writeYamlFile(brokenLinksPath, Array.from(this.brokenLinks).sort());
+      if (!silent)
+        logger.warn(`Broken links saved to ${brokenLinksPath} (${this.brokenLinks.size} links)`);
+    } else {
+      if (!silent) logger.info('No broken links to save (all pages crawled successfully)');
+    }
+  }
+
   /**
    * Save final results (sitemap, link reports, link relations) in YAML format
    */
   private async saveFinalResults(): Promise<void> {
-    const { ensureDir } = await import('./file-utils');
-
     logger.info(`saveFinalResults called: ${this.linkRelations.length} relations`);
     await ensureDir(this.config.stateDir);
 
@@ -800,14 +813,7 @@ export class SiteScanner {
       );
     }
 
-    // Save broken links in YAML format (after removing successfully crawled pages)
-    if (this.brokenLinks.size > 0) {
-      const brokenLinksPath = path.join(this.config.stateDir, 'broken-links.yaml');
-      await writeYamlFile(brokenLinksPath, Array.from(this.brokenLinks).sort());
-      logger.warn(`Broken links saved to ${brokenLinksPath} (${this.brokenLinks.size} links)`);
-    } else {
-      logger.info('No broken links to save (all pages crawled successfully)');
-    }
+    this.saveBrokenLinks();
 
     // Save external links in YAML format
     if (this.externalLinks.size > 0) {

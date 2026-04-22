@@ -65,6 +65,16 @@ export function isValidUrl(url: string): boolean {
 }
 
 /**
+ * Check if a path has a file extension
+ */
+function hasFileExtension(filePath: string): boolean {
+  // Get the last segment of the path (filename)
+  const filename = path.basename(filePath);
+  // Check if there's a dot followed by at least one character (extension)
+  return /\.[a-zA-Z0-9]+$/.test(filename);
+}
+
+/**
  * Convert URL to file path, preserving Cyrillic characters
  */
 export function urlToFilePath(url: string, baseUrl: string, destDir: string): string {
@@ -77,11 +87,11 @@ export function urlToFilePath(url: string, baseUrl: string, destDir: string): st
     relativePath = relativePath.substring(1);
   }
 
-  // Handle index files
+  // Handle index files and existing extensions
   if (relativePath === '' || relativePath.endsWith('/')) {
     relativePath += 'index.html';
-  } else if (!relativePath.endsWith('.html')) {
-    // Add .html extension for files without extension
+  } else if (!hasFileExtension(relativePath)) {
+    // Add .html extension only for files without any extension
     relativePath += '.html';
   }
 
