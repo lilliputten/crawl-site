@@ -45,7 +45,7 @@ REQUEST_TIMEOUT=30000
 DEST=./crawled-content
 
 # State Management
-STATE_DIR=./crawl-data
+STATE_DIR=./crawl-default
 
 # User Agent (Realistic browser User-Agent by default)
 USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
@@ -181,7 +181,7 @@ pnpm test-watch    # Watch mode for tests
 ### Cleanup
 
 ```bash
-pnpm clean         # Remove dist/, crawl-data/, crawled-content/
+pnpm clean         # Remove dist/, crawl-default/, crawled-content/
 ```
 
 ## Project Structure
@@ -237,7 +237,7 @@ For production deployment, you can compile to JavaScript:
 
 ```bash
 pnpm build         # Compile TypeScript → dist/
-pnpm clean         # Remove dist/, crawl-data/, crawled-content/
+pnpm clean         # Remove dist/, crawl-default/, crawled-content/
 ```
 
 ### Code Quality & Linting
@@ -305,7 +305,7 @@ pnpm test-watch    # Watch mode for tests
 
 ## Output Files
 
-After running `pnpm scan` or `pnpm crawl`, you'll find these files in the `crawl-data/` directory:
+After running `pnpm scan` or `pnpm crawl`, you'll find these files in the `crawl-default/` directory:
 
 ### Scan Output
 
@@ -344,8 +344,8 @@ The `link-relations.json` uses a hierarchical format for easy analysis:
 **Find broken link sources:**
 
 ```javascript
-const linkRelations = require('./crawl-data/link-relations.json');
-const brokenLinks = require('./crawl-data/broken-links.json');
+const linkRelations = require('./crawl-default/link-relations.json');
+const brokenLinks = require('./crawl-default/broken-links.json');
 
 brokenLinks.forEach((brokenUrl) => {
   const sources = linkRelations[brokenUrl] || [];
@@ -356,7 +356,7 @@ brokenLinks.forEach((brokenUrl) => {
 **Analyze page popularity:**
 
 ```javascript
-const linkRelations = require('./crawl-data/link-relations.json');
+const linkRelations = require('./crawl-default/link-relations.json');
 const popularity = Object.entries(link - relations)
   .map(([url, sources]) => ({ url, inboundLinks: sources.length }))
   .sort((a, b) => b.inboundLinks - a.inboundLinks);
@@ -570,7 +570,7 @@ This helps identify:
 
 The crawler saves progress periodically (every 10 pages or 5 errors) to support resuming:
 
-- **State files**: Stored in `STATE_DIR` (default: `./crawl-data`) in YAML format
+- **State files**: Stored in `STATE_DIR` (default: `./crawl-default`) in YAML format
 - **Automatic resume**: Restart the scanner/crawler and it continues from where it left off
 - **Broken link recovery**: Previously failed pages are retried on resume
 - **Progress tracking**: View `crawl-state.yaml` to see current progress

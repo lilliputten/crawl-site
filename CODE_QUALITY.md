@@ -8,8 +8,8 @@
 pnpm check-types   # tsc --pretty --noEmit
 ```
 
-**Purpose:** Check TypeScript types with formatted error output  
-**Config:** No file emission, just type validation  
+**Purpose:** Check TypeScript types with formatted error output
+**Config:** No file emission, just type validation
 **Use when:** Before committing code, in CI/CD pipelines
 
 ### Code Formatting (Prettier)
@@ -19,9 +19,9 @@ pnpm format        # Auto-format all source files
 pnpm format:check  # Verify formatting without changes
 ```
 
-**Purpose:** Ensure consistent code style across the project  
-**Files:** `.ts`, `.js`, `.json` in `src/`  
-**Config:** See `.prettierrc.json` and `.prettierignore`  
+**Purpose:** Ensure consistent code style across the project
+**Files:** `.ts`, `.js`, `.json` in `src/`
+**Config:** See `.prettierrc.json` and `.prettierignore`
 **Use when:** Before commits, in pre-commit hooks
 
 ### Comprehensive Checks
@@ -31,7 +31,7 @@ pnpm check-all     # Run all checks (types + lint + format + tests)
 pnpm check-all:fix # Run all checks with auto-fixes
 ```
 
-**Purpose:** Complete code quality validation  
+**Purpose:** Complete code quality validation
 **Runs in order:**
 
 1. `check-types` - TypeScript compilation
@@ -53,8 +53,8 @@ pnpm lint          # oxlint only (faster)
 pnpm lint:fix      # Auto-fix oxlint issues
 ```
 
-**Changed from:** Previously included tsc check  
-**Now:** Just runs oxlint for faster feedback  
+**Changed from:** Previously included tsc check
+**Now:** Just runs oxlint for faster feedback
 **Use:** During active development
 
 ## Configuration Files
@@ -80,8 +80,7 @@ pnpm lint:fix      # Auto-fix oxlint issues
 ```
 node_modules/
 dist/
-crawl-data/
-crawled-content/
+crawl-*/
 coverage/
 *.log
 .env.local
@@ -178,11 +177,11 @@ jobs:
 
 ## Benefits
 
-✅ **Type Safety** - Catch errors before runtime  
-✅ **Consistent Style** - All code follows same patterns  
-✅ **Automated** - No manual code review for style  
-✅ **Fast Feedback** - Know issues immediately  
-✅ **CI/CD Ready** - Perfect for automated pipelines  
+✅ **Type Safety** - Catch errors before runtime
+✅ **Consistent Style** - All code follows same patterns
+✅ **Automated** - No manual code review for style
+✅ **Fast Feedback** - Know issues immediately
+✅ **CI/CD Ready** - Perfect for automated pipelines
 ✅ **Developer Experience** - Focus on logic, not formatting
 
 ## Troubleshooting

@@ -3,7 +3,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
-import { CrawlConfig } from '@/types';
+import minimist from 'minimist';
+import { CrawlConfig, ExcludeRule } from '@/types';
 
 // Load .env files
 const envFile = path.resolve(process.cwd(), '.env');
@@ -17,42 +18,101 @@ if (fs.existsSync(envLocalFile)) {
   dotenv.config({ path: envLocalFile, override: true });
 }
 
+/**
+ * Parse command line arguments using minimist for better handling
+ */
 export function parseCommandLineArgs(): Partial<CrawlConfig> {
-  const args = process.argv.slice(2);
+  const argv = minimist(process.argv.slice(2));
   const config: Partial<CrawlConfig> = {};
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+  // Helper to get value with priority: CLI > env > default
+  const getValue = (key: string, defaultValue: any): any => {
+    // Convert kebab-case to camelCase for CLI args
+    const camelKey = key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
 
-    if (arg.startsWith('--site-url=')) {
-      config.siteUrl = arg.split('=')[1];
-    } else if (arg.startsWith('--sitemap-urls=')) {
-      config.sitemapUrls = JSON.parse(arg.split('=')[1]);
-    } else if (arg.startsWith('--crawl-delay=')) {
-      config.crawlDelay = parseInt(arg.split('=')[1], 10);
-    } else if (arg.startsWith('--max-retries=')) {
-      config.maxRetries = parseInt(arg.split('=')[1], 10);
-    } else if (arg.startsWith('--retry-delay-base=')) {
-      config.retryDelayBase = parseInt(arg.split('=')[1], 10);
-    } else if (arg.startsWith('--request-timeout=')) {
-      config.requestTimeout = parseInt(arg.split('=')[1], 10);
-    } else if (arg.startsWith('--dest=')) {
-      config.dest = arg.split('=')[1];
-    } else if (arg.startsWith('--state-dir=')) {
-      config.stateDir = arg.split('=')[1];
-    } else if (arg.startsWith('--user-agent=')) {
-      config.userAgent = arg.split('=')[1];
-    } else if (arg.startsWith('--respect-robots-txt=')) {
-      config.respectRobotsTxt = arg.split('=')[1] === 'true';
-    } else if (arg.startsWith('--max-pages=')) {
-      config.maxPages = parseInt(arg.split('=')[1], 10);
-    } else if (arg.startsWith('--log-level=')) {
-      config.logLevel = arg.split('=')[1] as CrawlConfig['logLevel'];
-    } else if (arg.startsWith('--use-browser-headers=')) {
-      config.useBrowserHeaders = arg.split('=')[1] === 'true';
-    } else if (arg.startsWith('--exclude=')) {
-      config.exclude = JSON.parse(arg.split('=')[1]);
+    // Check CLI first
+    if (argv[camelKey] !== undefined && argv[camelKey] !== '') {
+      return argv[camelKey];
     }
+    if (argv[key] !== undefined && argv[key] !== '') {
+      return argv[key];
+    }
+
+    // Then environment
+    const envKey = key.toUpperCase().replace(/-/g, '_');
+    const envValue = process.env[envKey];
+    if (envValue !== undefined && envValue !== '') {
+      return envValue;
+    }
+
+    // Return default
+    return defaultValue;
+  };
+
+
+  // Parse sitemap URLs (can be JSON array or comma-separated string)
+  const parseSitemapUrls = (value: any): string[] => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [value];
+      } catch {
+        return value
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter((s: string) => s);
+      }
+    }
+    return [];
+  };
+
+  config.siteUrl = getValue('site-url', undefined);
+  const sitemapUrlsRaw = getValue('sitemap-urls', undefined);
+  config.sitemapUrls = sitemapUrlsRaw !== undefined ? parseSitemapUrls(sitemapUrlsRaw) : undefined;
+  config.crawlDelay = getValue('crawl-delay', undefined) !== undefined ? Number(getValue('crawl-delay', undefined)) : undefined;
+  config.maxRetries = getValue('max-retries', undefined) !== undefined ? Number(getValue('max-retries', undefined)) : undefined;
+  config.retryDelayBase = getValue('retry-delay-base', undefined) !== undefined ? Number(getValue('retry-delay-base', undefined)) : undefined;
+  config.requestTimeout = getValue('request-timeout', undefined) !== undefined ? Number(getValue('request-timeout', undefined)) : undefined;
+  config.dest = getValue('dest', undefined);
+  config.stateDir = getValue('state-dir', undefined);
+  config.userAgent = getValue('user-agent', undefined);
+
+  const respectRobotsTxtRaw = getValue('respect-robots-txt', undefined);
+  config.respectRobotsTxt = respectRobotsTxtRaw !== undefined
+    ? (typeof respectRobotsTxtRaw === 'string' ? respectRobotsTxtRaw.toLowerCase() === 'true' : Boolean(respectRobotsTxtRaw))
+    : undefined;
+
+  config.maxPages = getValue('max-pages', undefined) !== undefined ? Number(getValue('max-pages', undefined)) : undefined;
+  config.logLevel = getValue('log-level', undefined) as CrawlConfig['logLevel'];
+
+  const useBrowserHeadersRaw = getValue('use-browser-headers', undefined);
+  config.useBrowserHeaders = useBrowserHeadersRaw !== undefined
+    ? (typeof useBrowserHeadersRaw === 'string' ? useBrowserHeadersRaw.toLowerCase() === 'true' : Boolean(useBrowserHeadersRaw))
+    : undefined;
+
+  // Parse showExclusionMessages
+  const showExclusionMessagesRaw = getValue('show-exclusion-messages', undefined);
+  config.showExclusionMessages = showExclusionMessagesRaw !== undefined
+    ? (typeof showExclusionMessagesRaw === 'string' ? showExclusionMessagesRaw.toLowerCase() === 'true' : Boolean(showExclusionMessagesRaw))
+    : undefined;
+
+  // Parse maxTreeDepth
+  config.maxTreeDepth = getValue('max-tree-depth', undefined) !== undefined ? Number(getValue('max-tree-depth', undefined)) : undefined;
+
+  // Parse exclude rules from CLI
+  try {
+    const excludeRaw = getValue('exclude', undefined);
+    if (excludeRaw !== undefined) {
+      const parsed = typeof excludeRaw === 'string' ? JSON.parse(excludeRaw) : excludeRaw;
+      if (Array.isArray(parsed)) {
+        config.exclude = parsed as ExcludeRule[];
+      }
+    }
+  } catch (error) {
+    console.warn('Warning: Failed to parse CLI exclude rules:', error);
   }
 
   return config;
@@ -115,7 +175,7 @@ export async function loadConfig(): Promise<CrawlConfig> {
     retryDelayBase: parseInt(process.env.RETRY_DELAY_BASE || '2000', 10),
     requestTimeout: parseInt(process.env.REQUEST_TIMEOUT || '30000', 10),
     dest: process.env.DEST || './crawled-content',
-    stateDir: process.env.STATE_DIR || './crawl-data',
+    stateDir: process.env.STATE_DIR || './crawl-default',
     userAgent:
       process.env.USER_AGENT ||
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

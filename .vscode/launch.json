@@ -13,14 +13,15 @@
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "tsx",
-      "args": ["--max-pages=1"]
+      "args": ["--max-pages=0"]
     },
     {
       "name": "debug crawl",
       "program": "src/scripts/crawl.ts",
       "type": "node",
       "request": "launch",
-      "runtimeExecutable": "tsx"
+      "runtimeExecutable": "tsx",
+      "args": ["--max-pages=0"]
     },
     {
       "name": "custom script",

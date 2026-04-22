@@ -13,8 +13,7 @@ exclude.yaml
 exclude.local.yaml
 
 # Crawl data and content
-crawl-data/
-crawled-content/
+crawl-*/
 
 # Logs
 logs/

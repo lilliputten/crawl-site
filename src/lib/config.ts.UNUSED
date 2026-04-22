@@ -75,13 +75,14 @@ export function loadConfig(): CrawlerConfig {
   const maxPages = Number(getValue('max-pages', 0));
   const logLevel = getValue('log-level', 'info');
   const useBrowserHeaders = getValue('use-browser-headers', false);
-  
+
   // Parse showExclusionMessages - handle string from env vars
   const showExclusionMessagesRaw = getValue('show-exclusion-messages', false);
-  const showExclusionMessages = typeof showExclusionMessagesRaw === 'string' 
+  debugger;
+  const showExclusionMessages = typeof showExclusionMessagesRaw === 'string'
     ? showExclusionMessagesRaw.toLowerCase() === 'true'
     : Boolean(showExclusionMessagesRaw);
-  
+
   // Parse maxTreeDepth - handle string from env vars
   const maxTreeDepth = Number(getValue('max-tree-depth', 5));
 
@@ -98,6 +99,7 @@ export function loadConfig(): CrawlerConfig {
   }
 
   const sitemapUrls = parseSitemapUrls(sitemapUrlsRaw);
+  debugger;
 
   return {
     siteUrl,
