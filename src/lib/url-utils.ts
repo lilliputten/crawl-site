@@ -75,6 +75,49 @@ function hasFileExtension(filePath: string): boolean {
 }
 
 /**
+ * Check if Content-Type header indicates HTML content
+ */
+export function isHtmlContent(contentType: string | undefined | null): boolean {
+  if (!contentType) {
+    // If no content-type, assume it might be HTML (conservative approach)
+    return true;
+  }
+
+  const lowerContentType = contentType.toLowerCase();
+  
+  // Check for HTML content types
+  return (
+    lowerContentType.includes('text/html') ||
+    lowerContentType.includes('application/xhtml+xml')
+  );
+}
+
+/**
+ * Check if URL likely points to a non-HTML resource based on extension
+ */
+export function isLikelyNonHtmlResource(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname.toLowerCase();
+    
+    // Common non-HTML file extensions
+    const nonHtmlExtensions = [
+      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+      '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico',
+      '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm',
+      '.zip', '.rar', '.tar', '.gz', '.7z',
+      '.css', '.js', '.json', '.xml',
+      '.woff', '.woff2', '.ttf', '.eot', '.otf',
+      '.csv', '.txt', '.rtf'
+    ];
+    
+    return nonHtmlExtensions.some(ext => pathname.endsWith(ext));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Convert URL to file path, preserving Cyrillic characters
  */
 export function urlToFilePath(url: string, baseUrl: string, destDir: string): string {

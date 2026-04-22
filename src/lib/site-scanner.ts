@@ -7,7 +7,14 @@ import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
 import { DelayManager } from './delay-manager';
 import { StateManager } from './state-manager';
 import { Logger } from './logger';
-import { normalizeUrl, decodeUrl, isSameDomain, urlToFilePath } from './url-utils';
+import {
+  normalizeUrl,
+  decodeUrl,
+  isSameDomain,
+  urlToFilePath,
+  isHtmlContent,
+  isLikelyNonHtmlResource,
+} from './url-utils';
 import { formatAxiosError } from './error-utils';
 import { writeYamlFile, ensureDir } from './file-utils';
 import { isUrlExcluded } from './url-excluder';
@@ -613,6 +620,14 @@ export class SiteScanner {
             headers,
           });
 
+          // Check Content-Type header to ensure it's HTML
+          const contentType = response.headers['content-type'];
+          if (!isHtmlContent(contentType ? String(contentType) : undefined)) {
+            logger.debug(`Skipping non-HTML content (${contentType}): ${url}`);
+            this.visitedUrls.add(normalized);
+            continue; // Skip this URL and move to next
+          }
+
           html = response.data;
           title = extractTitle(html);
 
@@ -641,6 +656,12 @@ export class SiteScanner {
 
           if (isUrlExcluded(normalizedLink, this.config.exclude, this.config)) {
             this.excludedUrlsCount++;
+            continue;
+          }
+
+          // Skip non-HTML resources based on URL extension
+          if (isLikelyNonHtmlResource(link)) {
+            logger.debug(`Skipping non-HTML resource: ${link}`);
             continue;
           }
 

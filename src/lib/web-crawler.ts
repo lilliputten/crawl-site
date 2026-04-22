@@ -6,7 +6,14 @@ import { CrawlConfig, PageData } from '@/types';
 import { DelayManager } from './delay-manager';
 import { StateManager } from './state-manager';
 import { Logger } from './logger';
-import { urlToFilePath, normalizeUrl, decodeUrl, isSameDomain } from './url-utils';
+import {
+  urlToFilePath,
+  normalizeUrl,
+  decodeUrl,
+  isSameDomain,
+  isHtmlContent,
+  isLikelyNonHtmlResource,
+} from './url-utils';
 import { saveFile, fileExists } from './file-utils';
 import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
 import { formatAxiosError } from './error-utils';
@@ -114,6 +121,22 @@ export class WebCrawler {
           },
         });
 
+        // Check Content-Type header to ensure it's HTML
+        const contentType = response.headers['content-type'];
+        if (!isHtmlContent(contentType ? String(contentType) : undefined)) {
+          logger.debug(`Skipping non-HTML content (${contentType}): ${nextUrl}`);
+          this.stateManager.markCompleted(nextUrl, {
+            url: nextUrl,
+            title: '',
+            content: '',
+            status: response.status,
+          });
+          pageCount++;
+          this.delayManager.recordSuccess();
+          await this.delayManager.wait();
+          continue; // Skip this URL and move to next
+        }
+
         const pageData: PageData = {
           url: nextUrl,
           title: this.extractTitle(response.data),
@@ -166,6 +189,22 @@ export class WebCrawler {
               },
             });
 
+            // Check Content-Type header to ensure it's HTML
+            const contentType = response.headers['content-type'];
+            if (!isHtmlContent(contentType ? String(contentType) : undefined)) {
+              logger.debug(`Skipping non-HTML content (${contentType}): ${nextUrl}`);
+              this.stateManager.markCompleted(nextUrl, {
+                url: nextUrl,
+                title: '',
+                content: '',
+                status: response.status,
+              });
+              pageCount++;
+              this.delayManager.recordSuccess();
+              success = true;
+              break;
+            }
+
             const pageData: PageData = {
               url: nextUrl,
               title: this.extractTitle(response.data),
@@ -187,7 +226,7 @@ export class WebCrawler {
 
         if (!success) {
           this.stateManager.markFailed(nextUrl, String(error));
-          
+
           // Add to broken links if it's an internal link
           try {
             const targetDomain = new URL(nextUrl).host;
@@ -240,12 +279,17 @@ export class WebCrawler {
       const content = await fs.promises.readFile(sitemapPath, 'utf-8');
       const sitemap = yaml.load(content) as any;
 
-      // Filter URLs to only include those from the same domain
+      // Filter URLs to only include those from the same domain and are HTML resources
       const siteDomain = new URL(this.config.siteUrl).host;
       const allUrls = sitemap.urls.map((p: PageData) => p.url);
       const sameDomainUrls = allUrls.filter((url: string) => {
         try {
           const urlDomain = new URL(url).host;
+          // Skip non-HTML resources based on URL extension
+          if (isLikelyNonHtmlResource(url)) {
+            logger.debug(`Skipping non-HTML resource from sitemap: ${url}`);
+            return false;
+          }
           return urlDomain === siteDomain;
         } catch {
           logger.warn(`Invalid URL in sitemap: ${url}`);
