@@ -74,6 +74,11 @@ export class SiteScanner {
   private retryCounts: Map<string, number> = new Map(); // Track retry attempts per URL
   private excludedUrlsCount: number = 0; // Track excluded URLs count
 
+  // Track changes since last save
+  private lastSavedPageCount: number = 0;
+  private lastSavedBrokenLinkCount: number = 0;
+  private hasChangesSinceLastSave: boolean = false;
+
   constructor(config: CrawlConfig, delayManager: DelayManager, stateManager: StateManager) {
     this.config = config;
     this.delayManager = delayManager;
@@ -141,6 +146,18 @@ export class SiteScanner {
    * Save current progress to files (called periodically during scanning)
    */
   private async saveProgress(): Promise<void> {
+    // Only save if there are actual changes
+    const currentPageCount = this.pages.length;
+    const currentBrokenLinkCount = this.brokenLinks.size;
+
+    const hasNewPages = currentPageCount > this.lastSavedPageCount;
+    const hasNewBrokenLinks = currentBrokenLinkCount > this.lastSavedBrokenLinkCount;
+
+    if (!hasNewPages && !hasNewBrokenLinks) {
+      logger.debug('No new pages or broken links found, skipping save');
+      return;
+    }
+
     await ensureDir(this.config.stateDir);
 
     // Update broken links by removing successfully crawled pages
@@ -278,6 +295,11 @@ export class SiteScanner {
         logger.error(error.stack);
       }
     }
+
+    // Update tracking variables after successful save
+    this.lastSavedPageCount = this.pages.length;
+    this.lastSavedBrokenLinkCount = this.brokenLinks.size;
+    this.hasChangesSinceLastSave = false;
   }
 
   /**
@@ -643,6 +665,9 @@ export class SiteScanner {
           title,
         });
 
+        // Mark that we have new content to save
+        this.hasChangesSinceLastSave = true;
+
         // Extract links from the page - pass the ORIGINAL url, not normalized
         const { internal, external } = this.extractLinks(html, url);
 
@@ -685,8 +710,8 @@ export class SiteScanner {
         }
         // No delay for cached pages - they're read instantly from disk
 
-        // Save progress periodically (every 10 pages)
-        if (this.pages.length % 10 === 0) {
+        // Save progress periodically (every 10 pages) if there are changes
+        if (this.pages.length % 10 === 0 && this.hasChangesSinceLastSave) {
           await this.saveProgress();
           logger.info(
             `Progress: ${this.pages.length} pages scanned, ${this.brokenLinks.size} broken links found`
@@ -708,6 +733,8 @@ export class SiteScanner {
         } else {
           // Max retries reached, mark as broken
           this.brokenLinks.add(normalizedUrl);
+          // Mark that we have new broken links to save
+          this.hasChangesSinceLastSave = true;
           logger.error(
             `Max retries (${this.config.maxRetries}) reached for ${url}, marking as broken`
           );
