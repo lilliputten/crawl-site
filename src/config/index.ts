@@ -49,7 +49,6 @@ export function parseCommandLineArgs(): Partial<CrawlConfig> {
     return defaultValue;
   };
 
-
   // Parse sitemap URLs (can be JSON array or comma-separated string)
   const parseSitemapUrls = (value: any): string[] => {
     if (Array.isArray(value)) {
@@ -72,35 +71,71 @@ export function parseCommandLineArgs(): Partial<CrawlConfig> {
   config.siteUrl = getValue('site-url', undefined);
   const sitemapUrlsRaw = getValue('sitemap-urls', undefined);
   config.sitemapUrls = sitemapUrlsRaw !== undefined ? parseSitemapUrls(sitemapUrlsRaw) : undefined;
-  config.crawlDelay = getValue('crawl-delay', undefined) !== undefined ? Number(getValue('crawl-delay', undefined)) : undefined;
-  config.maxRetries = getValue('max-retries', undefined) !== undefined ? Number(getValue('max-retries', undefined)) : undefined;
-  config.retryDelayBase = getValue('retry-delay-base', undefined) !== undefined ? Number(getValue('retry-delay-base', undefined)) : undefined;
-  config.requestTimeout = getValue('request-timeout', undefined) !== undefined ? Number(getValue('request-timeout', undefined)) : undefined;
+  config.crawlDelay =
+    getValue('crawl-delay', undefined) !== undefined
+      ? Number(getValue('crawl-delay', undefined))
+      : undefined;
+  config.maxRetries =
+    getValue('max-retries', undefined) !== undefined
+      ? Number(getValue('max-retries', undefined))
+      : undefined;
+  config.retryDelayBase =
+    getValue('retry-delay-base', undefined) !== undefined
+      ? Number(getValue('retry-delay-base', undefined))
+      : undefined;
+  config.requestTimeout =
+    getValue('request-timeout', undefined) !== undefined
+      ? Number(getValue('request-timeout', undefined))
+      : undefined;
   config.dest = getValue('dest', undefined);
   config.stateDir = getValue('state-dir', undefined);
   config.userAgent = getValue('user-agent', undefined);
 
   const respectRobotsTxtRaw = getValue('respect-robots-txt', undefined);
-  config.respectRobotsTxt = respectRobotsTxtRaw !== undefined
-    ? (typeof respectRobotsTxtRaw === 'string' ? respectRobotsTxtRaw.toLowerCase() === 'true' : Boolean(respectRobotsTxtRaw))
-    : undefined;
+  config.respectRobotsTxt =
+    respectRobotsTxtRaw !== undefined
+      ? typeof respectRobotsTxtRaw === 'string'
+        ? respectRobotsTxtRaw.toLowerCase() === 'true'
+        : Boolean(respectRobotsTxtRaw)
+      : undefined;
 
-  config.maxPages = getValue('max-pages', undefined) !== undefined ? Number(getValue('max-pages', undefined)) : undefined;
+  config.maxPages =
+    getValue('max-pages', undefined) !== undefined
+      ? Number(getValue('max-pages', undefined))
+      : undefined;
   config.logLevel = getValue('log-level', undefined) as CrawlConfig['logLevel'];
 
   const useBrowserHeadersRaw = getValue('use-browser-headers', undefined);
-  config.useBrowserHeaders = useBrowserHeadersRaw !== undefined
-    ? (typeof useBrowserHeadersRaw === 'string' ? useBrowserHeadersRaw.toLowerCase() === 'true' : Boolean(useBrowserHeadersRaw))
-    : undefined;
+  config.useBrowserHeaders =
+    useBrowserHeadersRaw !== undefined
+      ? typeof useBrowserHeadersRaw === 'string'
+        ? useBrowserHeadersRaw.toLowerCase() === 'true'
+        : Boolean(useBrowserHeadersRaw)
+      : undefined;
 
   // Parse showExclusionMessages
   const showExclusionMessagesRaw = getValue('show-exclusion-messages', undefined);
-  config.showExclusionMessages = showExclusionMessagesRaw !== undefined
-    ? (typeof showExclusionMessagesRaw === 'string' ? showExclusionMessagesRaw.toLowerCase() === 'true' : Boolean(showExclusionMessagesRaw))
-    : undefined;
+  config.showExclusionMessages =
+    showExclusionMessagesRaw !== undefined
+      ? typeof showExclusionMessagesRaw === 'string'
+        ? showExclusionMessagesRaw.toLowerCase() === 'true'
+        : Boolean(showExclusionMessagesRaw)
+      : undefined;
 
   // Parse maxTreeDepth
-  config.maxTreeDepth = getValue('max-tree-depth', undefined) !== undefined ? Number(getValue('max-tree-depth', undefined)) : undefined;
+  config.maxTreeDepth =
+    getValue('max-tree-depth', undefined) !== undefined
+      ? Number(getValue('max-tree-depth', undefined))
+      : undefined;
+
+  // Parse noColor
+  const noColorRaw = getValue('no-color', undefined);
+  config.noColor =
+    noColorRaw !== undefined
+      ? typeof noColorRaw === 'string'
+        ? noColorRaw.toLowerCase() === 'true'
+        : Boolean(noColorRaw)
+      : undefined;
 
   // Parse exclude rules from CLI
   try {
@@ -184,6 +219,7 @@ export async function loadConfig(): Promise<CrawlConfig> {
     logLevel: (process.env.LOG_LEVEL as CrawlConfig['logLevel']) || 'info',
     useBrowserHeaders: process.env.USE_BROWSER_HEADERS === 'true',
     exclude: process.env.EXCLUDE_RULES ? JSON.parse(process.env.EXCLUDE_RULES) : [],
+    noColor: process.env.NO_COLOR === 'true' || process.env.NO_COLOR === '1',
   };
 
   // Override with command line arguments
@@ -198,7 +234,11 @@ export async function loadConfig(): Promise<CrawlConfig> {
   const yamlRules = await loadExcludeRules();
 
   // Merge exclude rules: env config < CLI args < YAML files
-  const mergedExclude = [...(envConfig.exclude || []), ...(filteredCliConfig.exclude || []), ...yamlRules];
+  const mergedExclude = [
+    ...(envConfig.exclude || []),
+    ...(filteredCliConfig.exclude || []),
+    ...yamlRules,
+  ];
 
   const finalConfig = { ...envConfig, ...filteredCliConfig, exclude: mergedExclude } as CrawlConfig;
 

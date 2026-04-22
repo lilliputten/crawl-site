@@ -2,11 +2,18 @@
 
 import * as path from 'path';
 import { CrawlConfig, CrawlState, PageData, LinkRelation } from '@/types';
-import { ensureDir, saveFile, readFile, fileExists } from './file-utils';
+import { ensureDir, saveFile, fileExists, readYamlFile } from './file-utils';
 import { Logger } from './logger';
 // import { formatError } from './error-formatter'; // TODO: Add error formatting utility if needed
 
 const logger = new Logger();
+
+/**
+ * Configure the module-level logger with settings from config
+ */
+export function configureLogger(config: CrawlConfig): void {
+  logger.configure({ logLevel: config.logLevel, noColor: config.noColor });
+}
 
 export class StateManager {
   private config: CrawlConfig;

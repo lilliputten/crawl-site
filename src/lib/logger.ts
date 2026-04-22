@@ -7,39 +7,85 @@ const LOG_LEVELS = {
   error: 3,
 };
 
+// ANSI color codes for console output
+const COLORS = {
+  reset: '\x1b[0m',
+  red: '\x1b[31m', // For errors
+  yellow: '\x1b[33m', // For warnings (closest to orange in ANSI)
+  blue: '\x1b[34m', // For info
+  cyan: '\x1b[36m', // For debug
+};
+
 // Check if we're in a test environment
-const isTestEnvironment = process.env.NODE_ENV === 'test' ||
-                          typeof jest !== 'undefined' ||
-                          process.env.JEST_WORKER_ID !== undefined;
+const isTestEnvironment =
+  process.env.NODE_ENV === 'test' ||
+  typeof jest !== 'undefined' ||
+  process.env.JEST_WORKER_ID !== undefined;
 
 export class Logger {
   private logLevel: string;
+  private noColor: boolean;
 
-  constructor(logLevel: string = 'info') {
+  constructor(logLevel: string = 'info', noColor: boolean = false) {
     this.logLevel = logLevel;
+    this.noColor = noColor;
+  }
+
+  /**
+   * Update logger settings dynamically
+   */
+  configure(options: { logLevel?: string; noColor?: boolean }): void {
+    if (options.logLevel !== undefined) {
+      this.logLevel = options.logLevel;
+    }
+    if (options.noColor !== undefined) {
+      this.noColor = options.noColor;
+    }
+  }
+
+  /**
+   * Check if colors should be used
+   */
+  private shouldUseColors(): boolean {
+    // Disable colors if noColor is set or NO_COLOR env var is set
+    if (this.noColor) {
+      return false;
+    }
+
+    // Disable in test environment
+    if (isTestEnvironment) {
+      return false;
+    }
+
+    // Only use colors if stdout is a TTY
+    return process.stdout.isTTY === true;
   }
 
   debug(...args: any[]): void {
     if (this.shouldLog('debug')) {
-      console.log('[DEBUG]', ...args);
+      const prefix = this.shouldUseColors() ? `${COLORS.cyan}[DEBUG]${COLORS.reset}` : '[DEBUG]';
+      console.log(prefix, ...args);
     }
   }
 
   info(...args: any[]): void {
     if (this.shouldLog('info')) {
-      console.info('[INFO]', ...args);
+      const prefix = this.shouldUseColors() ? `${COLORS.blue}[INFO]${COLORS.reset}` : '[INFO]';
+      console.info(prefix, ...args);
     }
   }
 
   warn(...args: any[]): void {
     if (this.shouldLog('warn')) {
-      console.warn('[WARN]', ...args);
+      const prefix = this.shouldUseColors() ? `${COLORS.yellow}[WARN]${COLORS.reset}` : '[WARN]';
+      console.warn(prefix, ...args);
     }
   }
 
   error(...args: any[]): void {
     if (this.shouldLog('error')) {
-      console.error('[ERROR]', ...args);
+      const prefix = this.shouldUseColors() ? `${COLORS.red}[ERROR]${COLORS.reset}` : '[ERROR]';
+      console.error(prefix, ...args);
     }
   }
 

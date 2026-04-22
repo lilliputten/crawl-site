@@ -2,19 +2,26 @@
 
 import { loadConfig, validateConfig } from '@/config';
 import { DelayManager } from '@/lib/delay-manager';
-import { StateManager } from '@/lib/state-manager';
-import { WebCrawler } from '@/lib/web-crawler';
+import { StateManager, configureLogger as configureStateManagerLogger } from '@/lib/state-manager';
+import { WebCrawler, configureLogger as configureWebCrawlerLogger } from '@/lib/web-crawler';
+import { configureLogger as configureRobotsParserLogger } from '@/lib/robots-parser';
+import { configureLogger as configureUrlExcluderLogger } from '@/lib/url-excluder';
 import { Logger } from '@/lib/logger';
-
-const logger = new Logger();
 
 async function main() {
   try {
-    logger.info('=== Site Crawler Starting ===');
-
     // Load and validate configuration
     const config = await loadConfig();
     validateConfig(config);
+
+    // Configure logger with settings from config
+    const logger = new Logger(config.logLevel, config.noColor);
+    configureWebCrawlerLogger(config);
+    configureStateManagerLogger(config);
+    configureRobotsParserLogger(config);
+    configureUrlExcluderLogger(config);
+
+    logger.info('=== Site Crawler Starting ===');
 
     logger.debug('Configuration loaded:', {
       siteUrl: config.siteUrl,
@@ -22,6 +29,7 @@ async function main() {
       maxRetries: config.maxRetries,
       dest: config.dest,
       excludeRules: config.exclude.length,
+      noColor: config.noColor,
     });
 
     // Initialize components
@@ -38,7 +46,7 @@ async function main() {
 
     logger.info('=== Crawl Complete ===');
   } catch (error) {
-    logger.error(`Crawl failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`Crawl failed: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
 }

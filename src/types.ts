@@ -15,6 +15,7 @@ export interface CrawlConfig {
   exclude: ExcludeRule[]; // URL exclusion rules
   showExclusionMessages: boolean; // Show/hide URL exclusion messages (default: false)
   maxTreeDepth: number; // Maximum depth for hierarchical sitemap tree building (default: 5)
+  noColor: boolean; // Disable colored console output (default: false)
 }
 
 // URL exclusion rule types

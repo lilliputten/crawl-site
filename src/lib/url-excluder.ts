@@ -6,6 +6,13 @@ import { Logger } from './logger';
 const logger = new Logger();
 
 /**
+ * Configure the module-level logger with settings from config
+ */
+export function configureLogger(config: CrawlConfig): void {
+  logger.configure({ logLevel: config.logLevel, noColor: config.noColor });
+}
+
+/**
  * Check if a URL matches an exclusion rule
  */
 function matchesRule(url: string, rule: ExcludeRule): boolean {

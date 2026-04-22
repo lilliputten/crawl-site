@@ -14,6 +14,13 @@ import { JSDOM } from 'jsdom';
 
 const logger = new Logger();
 
+/**
+ * Configure the module-level logger with settings from config
+ */
+export function configureLogger(config: CrawlConfig): void {
+  logger.configure({ logLevel: config.logLevel, noColor: config.noColor });
+}
+
 export class WebCrawler {
   private config: CrawlConfig;
   private delayManager: DelayManager;
@@ -70,7 +77,7 @@ export class WebCrawler {
       if (alreadySaved) {
         logger.info(`Skipping (already saved): ${nextUrl}`);
         this.skippedCount++;
-        
+
         // Create minimal page data for state tracking
         const pageData: PageData = {
           url: nextUrl,
@@ -78,11 +85,11 @@ export class WebCrawler {
           content: '',
           status: 200,
         };
-        
+
         // Mark as completed without downloading
         this.stateManager.markCompleted(nextUrl, pageData);
         this.delayManager.recordSuccess();
-        
+
         // Save state periodically (every 10 pages including skipped)
         if ((pageCount + this.skippedCount) % 10 === 0) {
           await this.stateManager.saveState();
@@ -92,7 +99,7 @@ export class WebCrawler {
             `Progress: ${stats.completed} completed, ${stats.failed} failed, ${stats.queued} queued, ${this.skippedCount} skipped`
           );
         }
-        
+
         await this.delayManager.wait();
         continue;
       }
@@ -261,7 +268,8 @@ export class WebCrawler {
    */
   private async isPageAlreadySaved(url: string): Promise<boolean> {
     const filePath = urlToFilePath(url, this.config.siteUrl, this.config.dest);
-    return fileExists(filePath);
+    const exists = fileExists(filePath);
+    return exists;
   }
 
   /**

@@ -6,7 +6,7 @@ import { parseSitemapUrls, extractTitle } from './sitemap-parser';
 import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
 import { DelayManager } from './delay-manager';
 import { Logger } from './logger';
-import { normalizeUrl, decodeUrl, isSameDomain } from './url-utils';
+import { normalizeUrl, decodeUrl, isSameDomain, urlToFilePath } from './url-utils';
 import { formatAxiosError } from './error-utils';
 import { writeYamlFile, ensureDir } from './file-utils';
 import { isUrlExcluded } from './url-excluder';
@@ -15,6 +15,13 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 const logger = new Logger();
+
+/**
+ * Configure the module-level logger with settings from config
+ */
+export function configureLogger(config: CrawlConfig): void {
+  logger.configure({ logLevel: config.logLevel, noColor: config.noColor });
+}
 
 /**
  * Build realistic browser headers
@@ -69,24 +76,7 @@ export class SiteScanner {
   private async savePageContent(url: string, html: string): Promise<void> {
     try {
       // Create file path from URL, preserving directory structure
-      const urlObj = new URL(url);
-      let pathname = urlObj.pathname;
-
-      // Remove leading slash
-      if (pathname.startsWith('/')) {
-        pathname = pathname.substring(1);
-      }
-
-      // If pathname is empty or just '/', use index.html
-      if (!pathname || pathname === '/') {
-        pathname = 'index.html';
-      } else if (!pathname.endsWith('.html')) {
-        // Add .html extension if not present
-        pathname = pathname.endsWith('/') ? pathname + 'index.html' : pathname + '.html';
-      }
-
-      // Use config.dest directly (already points to crawl-default folder)
-      const filePath = path.join(this.config.dest, pathname);
+      const filePath = urlToFilePath(url, this.config.siteUrl, this.config.dest);
 
       // Ensure directory exists and save HTML file
       const dir = path.dirname(filePath);
@@ -572,7 +562,7 @@ export class SiteScanner {
           );
         }
       } catch (error) {
-        logger.warn(`Failed to scan ${url}:`, formatAxiosError(error));
+        logger.error(`Failed to scan ${url}:`, formatAxiosError(error));
 
         const normalizedUrl = normalizeUrl(decodeUrl(url));
         const currentRetries = this.retryCounts.get(normalizedUrl) || 0;
@@ -586,7 +576,7 @@ export class SiteScanner {
         } else {
           // Max retries reached, mark as broken
           this.brokenLinks.add(normalizedUrl);
-          logger.warn(
+          logger.error(
             `Max retries (${this.config.maxRetries}) reached for ${url}, marking as broken`
           );
         }

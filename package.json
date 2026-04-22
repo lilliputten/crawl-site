@@ -42,7 +42,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "clean": "rimraf dist && rimraf -g crawl-*",
+    "clean": "rimraf dist && (rimraf -g crawl-* || true)",
     "scan": "tsx src/scripts/scan.ts",
     "crawl": "tsx src/scripts/crawl.ts",
     "scan-build": "node dist/scripts/scan.js",

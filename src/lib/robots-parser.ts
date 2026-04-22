@@ -8,6 +8,13 @@ import { formatAxiosError } from './error-utils';
 const logger = new Logger();
 
 /**
+ * Configure the module-level logger with settings from config
+ */
+export function configureLogger(config: CrawlConfig): void {
+  logger.configure({ logLevel: config.logLevel, noColor: config.noColor });
+}
+
+/**
  * Fetch and parse robots.txt
  */
 export async function fetchRobotsTxt(
