@@ -32,6 +32,14 @@ export function normalizeUrl(url: string): string {
     // Clean up any double slashes in the pathname first
     let pathname = urlObj.pathname.replace(/\/{2,}/g, '/');
 
+    // Decode pathname to handle Cyrillic and other unicode characters
+    // This prevents URLs from being written as percent-encoded in YAML files
+    try {
+      pathname = decodeURIComponent(pathname);
+    } catch {
+      // If decoding fails, keep original pathname
+    }
+
     /* // UNUSED: Remove trailing slash except for root
      * if (pathname !== '/' && pathname.endsWith('/')) {
      *   pathname = pathname.slice(0, -1);

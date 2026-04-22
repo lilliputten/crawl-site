@@ -630,7 +630,7 @@ export class SiteScanner {
         logger.error(`Failed to scan ${url}:`, formatAxiosError(error));
 
         const normalizedUrl = normalizeUrl(decodeUrl(url));
-        const currentRetries = this.retryCounts.get(normalizedUrl) || 0;
+        const currentRetries = this.retryCounts.get(normalizedUrl) || 1;
 
         // Check if we should retry
         if (currentRetries < this.config.maxRetries) {
@@ -688,9 +688,9 @@ export class SiteScanner {
             const linkText = element.textContent?.trim() || '';
 
             // Categorize as internal or external using ORIGINAL URL
-            if (isSameDomain(fullUrl, baseUrl)) {
+            if (isSameDomain(normalized, baseUrl)) {
               // Add ORIGINAL URL to queue for fetching (preserves trailing slashes)
-              internalLinks.push(fullUrl);
+              internalLinks.push(normalized);
               // Track normalized version for deduplication
               this.internalLinks.add(normalized);
             } else {
