@@ -22,4 +22,5 @@ module.exports = {
       },
     ],
   },
+  // Enable console output during tests (removed silent: true)
 };

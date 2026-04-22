@@ -13,6 +13,7 @@ export interface CrawlConfig {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   useBrowserHeaders: boolean; // Impersonate as normal browser
   exclude: ExcludeRule[]; // URL exclusion rules
+  showExclusionMessages: boolean; // Show/hide URL exclusion messages (default: false)
 }
 
 // URL exclusion rule types

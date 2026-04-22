@@ -1,0 +1,25 @@
+# EditorConfig is awesome: http://EditorConfig.org
+root = true
+
+[*]
+insert_final_newline = true
+charset = utf-8
+indent_size = 2
+end_of_line = lf
+trim_trailing_whitespace = true
+indent_style = space
+
+[{.lvimrc,.vscode/launch.json,.stylelintrc.yaml}]
+indent_size = 2
+
+[{.py}]
+indent_size = 4
+
+# Ignore paths
+[{next/**,static/**,src/data/contributors.json,.vscode/launch.json,prisma/migrations/migration_lock.toml}]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_style = unset
+indent_size = unset

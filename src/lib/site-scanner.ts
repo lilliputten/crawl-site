@@ -56,6 +56,7 @@ export class SiteScanner {
   private linkRelations: Array<{ sourceUrl: string; targetUrl: string; linkText?: string }> = [];
   private crawledPages: Set<string> = new Set(); // Track successfully crawled pages
   private retryCounts: Map<string, number> = new Map(); // Track retry attempts per URL
+  private excludedUrlsCount: number = 0; // Track excluded URLs count
 
   constructor(config: CrawlConfig, delayManager: DelayManager) {
     this.config = config;
@@ -156,6 +157,7 @@ export class SiteScanner {
     const crawlStatePath = path.join(this.config.stateDir, 'crawl-state.yaml');
     const crawlState = {
       totalPagesScanned: this.pages.length,
+      excludedUrlsCount: this.excludedUrlsCount,
       crawledPages: Array.from(this.crawledPages).sort(),
       internalLinksCount: this.internalLinks.size,
       brokenLinksCount: this.brokenLinks.size,
@@ -314,6 +316,7 @@ export class SiteScanner {
 
     // Recursive function to build tree, with circular link detection
     const buildNode = (url: string, depth: number = 0): any => {
+      console.log('[site-scanner:buildNode]', depth, url);
       // Prevent infinite recursion from circular links
       if (visited.has(url)) {
         return { url, circular: true, children: [] };
@@ -432,6 +435,7 @@ export class SiteScanner {
     logger.info(
       `Links summary: ${this.internalLinks.size} internal, ${this.brokenLinks.size} broken, ${this.externalLinks.size} external`
     );
+    logger.info(`Excluded URLs: ${this.excludedUrlsCount}`);
 
     return siteMap;
   }
@@ -446,13 +450,13 @@ export class SiteScanner {
         const pages = await parseSitemapUrls(sitemapUrl, this.config);
 
         for (const page of pages) {
-          if (isSameDomain(page.url, this.config.siteUrl) && !this.visitedUrls.has(page.url)) {
-            // Check if URL should be excluded
-            if (isUrlExcluded(page.url, this.config.exclude)) {
-              logger.debug(`Skipping excluded URL from sitemap: ${page.url}`);
-              continue;
-            }
+          // Check if URL should be excluded FIRST (before checking visitedUrls)
+          if (isUrlExcluded(page.url, this.config.exclude, this.config)) {
+            this.excludedUrlsCount++;
+            continue;
+          }
 
+          if (isSameDomain(page.url, this.config.siteUrl) && !this.visitedUrls.has(page.url)) {
             if (!this.config.respectRobotsTxt || isUrlAllowed(page.url, null)) {
               this.pages.push(page);
               this.visitedUrls.add(page.url);
@@ -479,6 +483,13 @@ export class SiteScanner {
 
       // Check if already visited (using normalized URL for comparison)
       if (this.visitedUrls.has(normalizedUrl)) {
+        continue;
+      }
+
+      // Check if URL should be excluded BEFORE processing (use normalized URL)
+      if (isUrlExcluded(normalizedUrl, this.config.exclude, this.config)) {
+        this.excludedUrlsCount++;
+        this.visitedUrls.add(normalizedUrl); // Mark as visited to avoid re-queuing
         continue;
       }
 
@@ -517,16 +528,23 @@ export class SiteScanner {
         // Extract links from the page - pass the ORIGINAL url, not normalized
         const { internal, external } = this.extractLinks(response.data, url);
 
-        for (const link of internal) {
-          const normalizedLink = normalizeUrl(decodeUrl(link));
-          if (!this.visitedUrls.has(normalizedLink)) {
-            // Check if URL should be excluded
-            if (isUrlExcluded(link, this.config.exclude)) {
-              logger.debug(`Skipping excluded URL: ${link}`);
-              continue;
-            }
+        // Clear response data to free memory
+        response.data = null;
 
+        for (const link of internal) {
+          // Check if URL should be excluded FIRST (before checking visitedUrls)
+          // Normalize the link first to avoid issues with double slashes
+          const normalizedLink = normalizeUrl(decodeUrl(link));
+
+          if (isUrlExcluded(normalizedLink, this.config.exclude, this.config)) {
+            this.excludedUrlsCount++;
+            continue;
+          }
+
+          if (!this.visitedUrls.has(normalizedLink)) {
             if (!this.config.respectRobotsTxt || isUrlAllowed(link, null)) {
+              // Add ORIGINAL URL to queue to preserve path structure for URL resolution
+              // Use normalized URL only for deduplication
               queue.push(link);
             }
           }
@@ -586,6 +604,7 @@ export class SiteScanner {
       const document = dom.window.document;
       const internalLinks: string[] = [];
       const externalLinks: string[] = [];
+      const normalizedBase = normalizeUrl(decodeUrl(baseUrl));
 
       const elements = document.querySelectorAll('a[href]');
 
@@ -596,19 +615,11 @@ export class SiteScanner {
             // Handle relative URLs - keep ORIGINAL URL for fetching
             const fullUrl = new URL(href, baseUrl).toString();
 
-            // Get link text
-            const linkText = element.textContent?.trim() || '';
-
             // Normalize for tracking/storage only
             const normalized = normalizeUrl(decodeUrl(fullUrl));
-            const normalizedBase = normalizeUrl(decodeUrl(baseUrl));
 
-            // Track link relation with normalized URLs for consistency
-            this.linkRelations.push({
-              sourceUrl: normalizedBase,
-              targetUrl: normalized,
-              linkText: linkText || undefined,
-            });
+            // Get link text
+            const linkText = element.textContent?.trim() || '';
 
             // Categorize as internal or external using ORIGINAL URL
             if (isSameDomain(fullUrl, baseUrl)) {
@@ -616,6 +627,13 @@ export class SiteScanner {
               internalLinks.push(fullUrl);
               // Track normalized version for deduplication
               this.internalLinks.add(normalized);
+
+              // Track link relation with normalized URLs for consistency
+              this.linkRelations.push({
+                sourceUrl: normalizedBase,
+                targetUrl: normalized,
+                linkText: linkText || undefined,
+              });
             } else {
               externalLinks.push(normalized);
               this.externalLinks.add(normalized);
@@ -625,6 +643,9 @@ export class SiteScanner {
           }
         }
       });
+
+      // Clean up DOM to free memory
+      dom.window.close();
 
       return { internal: internalLinks, external: externalLinks };
     } catch (error) {
@@ -647,7 +668,12 @@ export class SiteScanner {
     // Update broken links by removing successfully crawled pages
     this.updateBrokenLinks();
 
-    logger.debug(`Saving final results: ${this.linkRelations.length} link relations tracked`);
+    logger.info(`Saving final results: ${this.linkRelations.length} link relations tracked`);
+    if (this.excludedUrlsCount > 0) {
+      logger.info(
+        `Exclusion summary: ${this.excludedUrlsCount} URLs were excluded based on ${this.config.exclude.length} rules`
+      );
+    }
 
     // Save sitemap in YAML format
     const siteMap: SiteMap = {
@@ -674,6 +700,7 @@ export class SiteScanner {
         const hierarchicalStructure = this.buildHierarchicalSitemap();
         const hierarchicalSitemapPath = path.join(this.config.stateDir, 'sitemap-structure.yaml');
         await writeYamlFile(hierarchicalSitemapPath, hierarchicalStructure);
+        debugger;
         logger.info(`Hierarchical sitemap structure saved to ${hierarchicalSitemapPath}`);
       } catch (error) {
         logger.error(

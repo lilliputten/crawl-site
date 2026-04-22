@@ -9,11 +9,14 @@
 # 4. --exclude CLI argument
 #
 # Available modes:
-# - prefix: URL starts with the string
-# - suffix: URL ends with the string
-# - contains: URL contains the string
-# - exact: URL exactly matches the string
-# - regex: URL matches the regular expression pattern
+# - prefix: URL or path starts with the string (e.g., "/admin/" matches "http://example.com/admin/dashboard")
+# - suffix: URL or path ends with the string (e.g., ".pdf" matches "http://example.com/document.pdf")
+# - contains: URL or path contains the string
+# - exact: URL or path exactly matches the string
+# - regex: URL or path matches the regular expression pattern
+#
+# Note: Rules are checked against both the full URL and the pathname,
+# so you can use paths like "/tags/" to match any URL containing that path.
 
 # Exclude admin pages
 - mode: prefix

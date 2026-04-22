@@ -7,6 +7,11 @@ const LOG_LEVELS = {
   error: 3,
 };
 
+// Check if we're in a test environment
+const isTestEnvironment = process.env.NODE_ENV === 'test' || 
+                          typeof jest !== 'undefined' ||
+                          process.env.JEST_WORKER_ID !== undefined;
+
 export class Logger {
   private logLevel: string;
 
@@ -39,6 +44,11 @@ export class Logger {
   }
 
   private shouldLog(level: string): boolean {
+    // Disable all logging in test environment to keep test output clean
+    if (isTestEnvironment) {
+      return false;
+    }
+    
     return (
       LOG_LEVELS[level as keyof typeof LOG_LEVELS] >=
       LOG_LEVELS[this.logLevel as keyof typeof LOG_LEVELS]

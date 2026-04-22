@@ -75,6 +75,7 @@ export function loadConfig(): CrawlerConfig {
   const maxPages = Number(getValue('max-pages', 0));
   const logLevel = getValue('log-level', 'info');
   const useBrowserHeaders = getValue('use-browser-headers', false);
+  const showExclusionMessages = getValue('show-exclusion-messages', false);
 
   // Parse exclude rules from CLI or default to empty array
   let exclude: ExcludeRule[] = [];
@@ -105,5 +106,6 @@ export function loadConfig(): CrawlerConfig {
     logLevel,
     useBrowserHeaders,
     exclude,
+    showExclusionMessages,
   };
 }

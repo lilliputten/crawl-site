@@ -29,8 +29,10 @@ export function decodeUrl(url: string): string {
 export function normalizeUrl(url: string): string {
   try {
     const urlObj = new URL(url);
+    // Clean up any double slashes in the pathname first
+    let pathname = urlObj.pathname.replace(/\/{2,}/g, '/');
+    
     // Remove trailing slash except for root
-    let pathname = urlObj.pathname;
     if (pathname !== '/' && pathname.endsWith('/')) {
       pathname = pathname.slice(0, -1);
     }

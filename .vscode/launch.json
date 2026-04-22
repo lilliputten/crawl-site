@@ -1,0 +1,71 @@
+// ex: set ft=jsonc:sw=2:ts=4:
+// @changed 2025.05.22, 16:08
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit:
+  // https://code.visualstudio.com/docs/editor/debugging#_launch-configurations
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "debug scan",
+      "program": "src/scripts/scan.ts",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "tsx"
+    },
+    {
+      "name": "debug crawl",
+      "program": "src/scripts/crawl.ts",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "tsx"
+    },
+    {
+      "name": "custom script",
+      "program": "${workspaceFolder}/test.js",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "node",
+      // "externalConsole": true,
+      "args": [
+        // "--help",
+      ]
+    },
+    {
+      "name": "current javascript",
+      "program": "${file}",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "node"
+    },
+    {
+      "name": "current typescript",
+      "program": "${file}",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "tsx"
+    },
+    {
+      "name": "specific typescript",
+      "program": "${workspaceRoot}/src/packages/text-similarity/test-run/runEnhancedTests.ts",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "tsx"
+    },
+    {
+      "name": "Node: gulp",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceRoot}/node_modules/gulp/bin/gulp.js",
+      "console": "integratedTerminal",
+      "args": ["build"]
+    },
+    {
+      "name": "Jest single test",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm exec jest --no-watch --testTimeout=60000 getRecentTopics.test"
+    }
+  ]
+}
