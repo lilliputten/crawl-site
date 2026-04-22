@@ -31,11 +31,12 @@ export function normalizeUrl(url: string): string {
     const urlObj = new URL(url);
     // Clean up any double slashes in the pathname first
     let pathname = urlObj.pathname.replace(/\/{2,}/g, '/');
-    
-    // Remove trailing slash except for root
-    if (pathname !== '/' && pathname.endsWith('/')) {
-      pathname = pathname.slice(0, -1);
-    }
+
+    /* // UNUSED: Remove trailing slash except for root
+     * if (pathname !== '/' && pathname.endsWith('/')) {
+     *   pathname = pathname.slice(0, -1);
+     * }
+     */
 
     return `${urlObj.protocol}//${urlObj.host}${pathname}`;
   } catch (error) {

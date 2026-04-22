@@ -1,6 +1,7 @@
 {
   "rules": {
     "no-console": "off",
+    "no-debugger": "warn",
     "no-unused-vars": "warn",
     "no-undef": "error",
     "semi": ["error", "always"],
