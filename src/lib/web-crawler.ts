@@ -7,7 +7,7 @@ import { DelayManager } from './delay-manager';
 import { StateManager } from './state-manager';
 import { Logger } from './logger';
 import { urlToFilePath, normalizeUrl, decodeUrl, isSameDomain } from './url-utils';
-import { saveFile } from './file-utils';
+import { saveFile, fileExists } from './file-utils';
 import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
 import { formatAxiosError } from './error-utils';
 import { JSDOM } from 'jsdom';
@@ -19,11 +19,13 @@ export class WebCrawler {
   private delayManager: DelayManager;
   private stateManager: StateManager;
   private robotsTxt: any = null;
+  private skippedCount: number = 0; // Track skipped (already saved) pages
 
   constructor(config: CrawlConfig, delayManager: DelayManager, stateManager: StateManager) {
     this.config = config;
     this.delayManager = delayManager;
     this.stateManager = stateManager;
+    this.skippedCount = 0;
   }
 
   /**
@@ -60,6 +62,38 @@ export class WebCrawler {
       if (this.config.respectRobotsTxt && !isUrlAllowed(nextUrl, this.robotsTxt)) {
         logger.debug(`URL blocked by robots.txt: ${nextUrl}`);
         this.stateManager.removeFromQueue(nextUrl);
+        continue;
+      }
+
+      // Check if page was already saved during scan stage
+      const alreadySaved = await this.isPageAlreadySaved(nextUrl);
+      if (alreadySaved) {
+        logger.info(`Skipping (already saved): ${nextUrl}`);
+        this.skippedCount++;
+        
+        // Create minimal page data for state tracking
+        const pageData: PageData = {
+          url: nextUrl,
+          title: '',
+          content: '',
+          status: 200,
+        };
+        
+        // Mark as completed without downloading
+        this.stateManager.markCompleted(nextUrl, pageData);
+        this.delayManager.recordSuccess();
+        
+        // Save state periodically (every 10 pages including skipped)
+        if ((pageCount + this.skippedCount) % 10 === 0) {
+          await this.stateManager.saveState();
+          await this.stateManager.saveLinkRelations();
+          const stats = this.stateManager.getStats();
+          logger.info(
+            `Progress: ${stats.completed} completed, ${stats.failed} failed, ${stats.queued} queued, ${this.skippedCount} skipped`
+          );
+        }
+        
+        await this.delayManager.wait();
         continue;
       }
 
@@ -166,7 +200,9 @@ export class WebCrawler {
     await this.stateManager.saveState();
     await this.stateManager.saveLinkRelations();
     const stats = this.stateManager.getStats();
-    logger.info(`Crawl complete: ${stats.completed} completed, ${stats.failed} failed`);
+    logger.info(
+      `Crawl complete: ${stats.completed} completed, ${stats.failed} failed, ${this.skippedCount} skipped (already saved)`
+    );
   }
 
   /**
@@ -218,6 +254,14 @@ export class WebCrawler {
         `Failed to load sitemap: ${error instanceof Error ? error.message : String(error)}`
       );
     }
+  }
+
+  /**
+   * Check if page was already saved during scan stage
+   */
+  private async isPageAlreadySaved(url: string): Promise<boolean> {
+    const filePath = urlToFilePath(url, this.config.siteUrl, this.config.dest);
+    return fileExists(filePath);
   }
 
   /**
