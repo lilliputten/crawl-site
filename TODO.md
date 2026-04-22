@@ -39,11 +39,11 @@
 - [x] Configure absolute imports with @/\* path mapping
 - [x] Update Jest configuration with moduleNameMapper
 - [x] Add comprehensive code quality commands (check-all, format, etc.)
-- [ ] Test scan functionality
-- [ ] Test crawl functionality
+- [x] Test scan functionality
+- [x] Test crawl functionality
 - [ ] Verify Cyrillic URL handling
 - [ ] Test resume capability
-- [ ] Test error handling and delays
+- [x] Test error handling and delays
 - [x] Run unit tests (8/8 passing)
 
 ## Final Steps

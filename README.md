@@ -309,27 +309,23 @@ After running `pnpm scan` or `pnpm crawl`, you'll find these files in the `crawl
 
 ### Scan Output
 
-- **sitemap.json** - Discovered pages with URLs and titles
-- **internal-links.json** - All internal links found (sorted array)
-- **broken-links.json** - Internal links that returned errors (404, 500, etc.)
-- **external-links.json** - All external links found (sorted array)
-- **link-relations.json** - ⭐ Hierarchical link relationship map showing which pages link to which
+- **sitemap.yaml** - Discovered pages with URLs and titles
+- **internal-links.yaml** - All internal links found (sorted array)
+- **broken-links.yaml** - Internal links that returned errors (404, 500, etc.)
+- **external-links.yaml** - All external links found (sorted array)
+- **link-relations.yaml** - ⭐ Hierarchical link relationship map showing which pages link to which
 
 ### Link Relations Format
 
-The `link-relations.json` uses a hierarchical format for easy analysis:
+The `link-relations.yaml` uses a hierarchical format for easy analysis:
 
-```json
-{
-  "http://example.com/target-page": [
-    "http://example.com/source-page-1",
-    "http://example.com/source-page-2"
-  ],
-  "http://example.com/another-target": [
-    "http://example.com/source-page-1",
-    "http://example.com/source-page-3"
-  ]
-}
+```
+http://example.com/target-page:
+  - http://example.com/source-page-1
+  - http://example.com/source-page-2
+http://example.com/another-target:
+  - http://example.com/source-page-1
+  - http://example.com/source-page-3
 ```
 
 **Key features:**
@@ -344,8 +340,11 @@ The `link-relations.json` uses a hierarchical format for easy analysis:
 **Find broken link sources:**
 
 ```javascript
-const linkRelations = require('./crawl-default/link-relations.json');
-const brokenLinks = require('./crawl-default/broken-links.json');
+const yaml = require('js-yaml');
+const fs = require('fs');
+
+const linkRelations = yaml.load(fs.readFileSync('./crawl-default/link-relations.yaml', 'utf8'));
+const brokenLinks = yaml.load(fs.readFileSync('./crawl-default/broken-links.yaml', 'utf8'));
 
 brokenLinks.forEach((brokenUrl) => {
   const sources = linkRelations[brokenUrl] || [];
@@ -356,8 +355,11 @@ brokenLinks.forEach((brokenUrl) => {
 **Analyze page popularity:**
 
 ```javascript
-const linkRelations = require('./crawl-default/link-relations.json');
-const popularity = Object.entries(link - relations)
+const yaml = require('js-yaml');
+const fs = require('fs');
+
+const linkRelations = yaml.load(fs.readFileSync('./crawl-default/link-relations.yaml', 'utf8'));
+const popularity = Object.entries(linkRelations)
   .map(([url, sources]) => ({ url, inboundLinks: sources.length }))
   .sort((a, b) => b.inboundLinks - a.inboundLinks);
 ```
@@ -366,7 +368,7 @@ const popularity = Object.entries(link - relations)
 
 In addition to scan files, crawling generates:
 
-- **crawl-state.json** - Complete crawl state (can resume from this)
+- **crawl-state.yaml** - Complete crawl state (can resume from this)
 - **crawled-content/** - Downloaded HTML files preserving site structure
 
 ## Key Features
@@ -388,7 +390,7 @@ When errors occur, delays increase exponentially:
 
 ### State Management
 
-The crawler maintains state in `crawl-state.json` (and other YAML files) and can resume from where it left off if interrupted. This is useful for large sites.
+The crawler maintains state in YAML files (crawl-state.yaml, etc.) and can resume from where it left off if interrupted. This is useful for large sites.
 
 ## Advanced Features
 

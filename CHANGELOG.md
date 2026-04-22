@@ -9,15 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Hierarchical link relations tracking** - New `link-relations.json` format using `{targetUrl: [sourceUrls]}` structure for easier analysis
+- **Hierarchical link relations tracking** - New `link-relations.yaml` format using `{targetUrl: [sourceUrls]}` structure for easier analysis
 - **Self-reference filtering** - Automatically excludes pages linking to themselves from link relations data
 - **Periodic progress saving during scan** - Saves sitemap and link relations every 10 pages scanned
 - **Periodic state saving during crawl** - Saves crawl state and link relations every 10 pages or 5 errors
 - **Real-time progress logging** - Shows currently processing page with counter during scan and crawl operations
 - **Link relation query helpers** - Added methods to find pages linking to/from specific URLs
+- **maxDelay configuration parameter** - Configurable maximum delay cap for exponential backoff (replaces hardcoded 10000ms)
 
 ### Changed
 
+- **All data files now use YAML format** - Migrated from JSON to YAML for better readability and consistency (sitemap, crawl-state, broken-links, internal-links, external-links, link-relations)
 - **Improved error messages** - Compact, readable error formatting for network and HTTP errors (no more verbose stack traces)
 - **URL handling optimization** - Preserves original URLs for fetching while using normalized URLs for deduplication
 - **Link relations format** - Switched from array of objects to hierarchical object format for better performance
@@ -27,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Trailing slash URL handling** - Fixed 404 errors caused by removing trailing slashes before fetching URLs
 - **Cross-domain sitemap filtering** - Now filters out sitemaps and URLs from different domains during both scan and crawl
 - **State persistence** - Ensures all data is saved periodically to prevent loss on failures
+- **Relative URL resolution** - Fixed incorrect URL resolution when base URL lacks trailing slash (e.g., `/reviews` resolving `./2025/...` correctly to `/reviews/2025/...`)
 
 ### Deprecated
 
