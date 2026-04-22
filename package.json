@@ -1,7 +1,7 @@
 {
   "name": "crawl-site",
-  "version": "0.0.1",
-  "changed": "2026.04.22, 02:05",
+  "version": "0.0.2",
+  "changed": "2026.04.22, 13:09",
   "description": "A TypeScript-based website crawler and scanner with resume capability",
   "main": "src/crawl.ts",
   "keywords": [

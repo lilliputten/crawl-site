@@ -1,22 +1,63 @@
 # Crawl-Site
 
+**Version**: 0.0.2  
+**Last Updated**: 2026-04-22
+
 A TypeScript-based website crawler and scanner with resume capability. It scans site structure, crawls pages, and saves HTML content while maintaining the original site structure.
 
 ## Features
+
+### Core Functionality
 
 - **Two-stage process**: Scan (discover URLs) and Crawl (download content)
 - **Sitemap support**: Parse XML and HTML sitemaps
 - **Resume capability**: Continue crawling from where you left off
 - **Smart retry**: Failed pages are automatically retried up to configured max retries
-- **Configurable delays**: Exponential backoff on errors
-- **Cyrillic URL support**: Properly handles unicode characters in URLs
-- **Browser impersonation**: Optional realistic browser headers to avoid detection
-- **robots.txt respect**: Optional robots.txt compliance
+- **Configurable delays**: Exponential backoff on errors with configurable maximum delay
 - **State management**: Tracks progress and can resume later
 - **Content preservation**: Saves crawled pages as HTML with original directory structure
-- **Link analysis**: Tracks internal, external, and broken links with relationship mapping
+
+### URL Handling
+
+- **Cyrillic URL support**: Properly handles unicode characters in URLs
+- **URL normalization**: Decodes percent-encoded URLs for better readability in output files
+- **Extension preservation**: Prevents double extensions (e.g., `image.jpg` stays as `.jpg`, not `.jpg.html`)
+- **Trailing slash handling**: Preserves trailing slashes to avoid 404 errors
+- **Relative URL resolution**: Correctly resolves relative URLs even when base URL lacks trailing slash
+
+### Link Analysis
+
+- **Link categorization**: Tracks internal, external, and broken links separately
+- **Link relationship mapping**: Hierarchical structure showing which pages link to which targets
+- **Self-reference filtering**: Automatically excludes pages linking to themselves
+- **Broken link detection**: Identifies and tracks 404/500 errors with retry logic
+- **Cross-domain filtering**: Filters out sitemaps and URLs from different domains
+
+### Performance Optimizations
+
+- **Intelligent caching**: Skips re-fetching pages already saved to disk
+- **No delays for cached content**: Instant processing of previously scanned/crawled pages
+- **Broken link skip**: Avoids re-processing known broken links during scanning
+- **Periodic state saving**: Saves progress every 10 pages or 5 errors to prevent data loss
+- **Memory management**: Clears response data after saving to free memory
+
+### Browser & Robots Support
+
+- **Browser impersonation**: Optional realistic browser headers to avoid detection
+- **robots.txt respect**: Optional robots.txt compliance
+- **Configurable user agent**: Realistic browser User-Agent by default
+
+### Data Format
+
 - **YAML output**: All state and data files use YAML format for better readability
-- **Configurable**: Environment variables and command-line arguments
+- **Hierarchical link relations**: `{targetUrl: [sourceUrls]}` structure for easier analysis
+- **Comprehensive logging**: Real-time progress with page counters and statistics
+
+### Configuration
+
+- **Environment variables**: Configure via `.env.local` file
+- **Command-line arguments**: Override settings via CLI flags
+- **Exclude rules**: Pattern-based URL exclusion via `exclude.yaml`
 
 ## Installation
 
