@@ -149,6 +149,9 @@ export function parseCommandLineArgs(): Partial<CrawlConfig> {
       ? Number(getValue('top-report-pages-count', undefined))
       : undefined;
 
+  // Parse timezone
+  config.timezone = getValue('timezone', undefined);
+
   // Parse exclude rules from CLI
   try {
     const excludeRaw = getValue('exclude', undefined);
@@ -234,6 +237,7 @@ export async function loadConfig(): Promise<CrawlConfig> {
     noColor: process.env.NO_COLOR === 'true' || process.env.NO_COLOR === '1',
     maxDelay: parseInt(process.env.MAX_DELAY || '10000', 10),
     topReportPagesCount: parseInt(process.env.TOP_REPORT_PAGES_COUNT || '50', 10),
+    timezone: process.env.TIMEZONE,
   };
 
   // Override with command line arguments

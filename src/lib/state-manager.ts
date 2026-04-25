@@ -216,11 +216,11 @@ export class StateManager {
         }
 
         // Update metadata fields from crawl-state.yaml
+        if (data.scanStartTime) {
+          this.state.scanStartTime = new Date(data.scanStartTime);
+        }
         if (data.lastProcessed) {
           this.state.lastProcessed = new Date(data.lastProcessed);
-        }
-        if (data.scanStartTime) {
-          this.state.scanStartTime = data.scanStartTime;
         }
 
         logger.info(
@@ -430,10 +430,20 @@ export class StateManager {
   /**
    * Get scan start time (ISO string) if available
    */
-  getScanStartTime(): string | undefined {
+  getScanStartTime(): Date | undefined {
     return this.state.scanStartTime;
   }
 
+  /**
+   * Set scan start time
+   */
+  setScanStartTime(startTime: Date): void {
+    this.state.scanStartTime = startTime;
+  }
+
+  setLastProcessed(lastProcessed: Date = new Date()): void {
+    this.state.lastProcessed = lastProcessed;
+  }
   /**
    * Get all queued URLs
    */
@@ -515,12 +525,12 @@ export class StateManager {
     }
 
     // Update scan start time if provided
-    if (data.scanStartTime) {
-      this.state.scanStartTime = data.scanStartTime;
-    }
-
-    // Update last processed time
-    this.state.lastProcessed = new Date();
+    // if (data.scanStartTime) {
+    //   this.state.scanStartTime = new Date(data.scanStartTime);
+    // }
+    //
+    // // Update last processed time
+    // this.state.lastProcessed = new Date();
 
     logger.info(
       `State updated from scanner: ${data.pages.length} pages, ${data.brokenLinks.length} broken links, ${data.externalLinks.length} external links, ${data.linkRelations.length} relations${data.redirectedPages ? `, ${data.redirectedPages.length} redirects` : ''}`

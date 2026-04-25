@@ -17,7 +17,7 @@ export interface CrawlConfig {
   maxTreeDepth: number; // Maximum depth for hierarchical sitemap tree building (default: 5)
   noColor: boolean; // Disable colored console output (default: false)
   maxDelay: number; // Maximum delay cap for exponential backoff (default: 10000ms)
-  timezone?: string; // Timezone for date formatting (from TZ env var, e.g., 'Europe/Moscow')
+  timezone?: string; // Timezone for date formatting (from TIMEZONE env var or --timezone CLI arg, e.g., 'Europe/Moscow')
   topReportPagesCount?: number; // Number of top/least linked pages to include in report (default: 50)
 }
 
@@ -72,7 +72,7 @@ export interface CrawlState {
   lastProcessed: Date;
   crawledPages: string[]; // URLs of pages that have been successfully crawled and saved (stored in completed.yaml)
   redirectedPages: RedirectedPage[]; // Pages that returned redirect status codes (stored in redirected-pages.yaml)
-  scanStartTime?: string; // ISO timestamp of when scan started (for resume capability)
+  scanStartTime?: Date; // ISO timestamp of when scan started (for resume capability)
 }
 
 /**

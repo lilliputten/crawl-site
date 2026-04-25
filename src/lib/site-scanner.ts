@@ -90,7 +90,6 @@ export class SiteScanner {
   private redirectedPages: RedirectedPage[] = []; // Track redirected pages
   private retryCounts: Map<string, number> = new Map(); // Track retry attempts per URL
   private excludedUrlsCount: number = 0; // Track excluded URLs count
-  private scanStartTime: Date; // Track when scan started
 
   // Track changes since last save
   private lastSavedPageCount: number = 0;
@@ -125,15 +124,6 @@ export class SiteScanner {
       timestamp: p.timestamp,
       redirectUrl: p.redirectUrl,
     }));
-
-    // Load scan start time from state if available, otherwise initialize to now
-    const savedScanStartTime = this.stateManager.getScanStartTime();
-    if (savedScanStartTime) {
-      this.scanStartTime = new Date(savedScanStartTime);
-      logger.info(`Resumed scan started at: ${this.scanStartTime.toISOString()}`);
-    } else {
-      this.scanStartTime = new Date();
-    }
 
     logger.info(
       `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.linkRelations.length} link relations, ${this.redirectedPages.length} redirected pages`
@@ -289,6 +279,7 @@ export class SiteScanner {
 
     // Save crawl state metadata (without large arrays - those are in separate files)
     const crawlStatePath = path.join(this.config.stateDir, 'crawl-state.yaml');
+    const scanStartTime = this.stateManager.getScanStartTime();
     const crawlState = {
       totalPagesScanned: this.pages.length,
       excludedUrlsCount: this.excludedUrlsCount,
@@ -297,7 +288,7 @@ export class SiteScanner {
       externalLinksCount: this.externalLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
-      scanStartTime: this.scanStartTime.toISOString(),
+      scanStartTime: scanStartTime || undefined,
     };
     await writeYamlFile(crawlStatePath, crawlState);
     logger.debug(`Crawl state metadata saved`);
@@ -482,6 +473,12 @@ export class SiteScanner {
   async scan(): Promise<SiteMap> {
     logger.info(`Starting scan of ${this.config.siteUrl}`);
 
+    // Initialize scan start time for this session and save to state
+    const scanStartTime = new Date();
+    this.stateManager.setScanStartTime(scanStartTime);
+    this.stateManager.setLastProcessed(scanStartTime);
+    logger.info(`Scan started at: ${scanStartTime.toISOString()}`);
+
     // Fetch robots.txt if configured
     let robotsTxt = null;
     if (this.config.respectRobotsTxt) {
@@ -528,13 +525,10 @@ export class SiteScanner {
     // Final save of all data
     try {
       logger.info('Saving final results...');
+      this.stateManager.setLastProcessed();
       await this.saveFinalResults();
       logger.info('Final results saved successfully');
-    } catch (error) {
-      logger.error(
-        `Failed to save final results: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
+    } catch (error) {}
 
     const siteMap: SiteMap = {
       urls: this.pages,
@@ -556,7 +550,7 @@ export class SiteScanner {
       linkRelations: this.linkRelations,
       crawledPages: Array.from(this.crawledPages),
       redirectedPages: this.redirectedPages,
-      scanStartTime: this.scanStartTime.toISOString(),
+      scanStartTime: scanStartTime.toISOString(),
     });
 
     // Save all state to disk (data is saved to separate YAML files)
@@ -1055,14 +1049,16 @@ export class SiteScanner {
 
     // Save crawl state metadata (without large arrays - those are in separate files)
     const crawlStatePath = path.join(this.config.stateDir, 'crawl-state.yaml');
+    const scanStartTime = this.stateManager.getScanStartTime();
     const crawlState = {
       totalPagesScanned: this.pages.length,
+      excludedUrlsCount: this.excludedUrlsCount,
       internalLinksCount: this.internalLinks.size,
       brokenLinksCount: this.brokenLinks.size,
       externalLinksCount: this.externalLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
-      scanStartTime: this.scanStartTime.toISOString(),
+      scanStartTime: scanStartTime || undefined,
     };
     await writeYamlFile(crawlStatePath, crawlState);
     logger.info(`Crawl state metadata saved`);
@@ -1194,6 +1190,7 @@ export class SiteScanner {
    */
   async regenerateReportOnly(): Promise<void> {
     logger.info('Regenerating report only (read-only mode)...');
+    // Report will get scanStartTime from StateManager
     await this.generateReport();
     logger.info('Report regenerated successfully');
   }
@@ -1202,11 +1199,11 @@ export class SiteScanner {
    * Format a date with timezone in the format: "2026.04.25 00:47 +0300"
    */
   private formatDateWithTimezone(date: Date): string {
-    const timezone = this.config.timezone || 'UTC';
+    const timezone = this.config.timezone || undefined;
 
     try {
       // Get the offset in hours and minutes
-      const formatter = new Intl.DateTimeFormat('en-US', {
+      const formatter = new Intl.DateTimeFormat('en-UK', {
         timeZone: timezone,
         year: 'numeric',
         month: '2-digit',
@@ -1229,7 +1226,8 @@ export class SiteScanner {
       const offsetSign = offsetMinutes <= 0 ? '+' : '-';
       const offsetStr = `${offsetSign}${String(offsetHours).padStart(2, '0')}${String(offsetMins).padStart(2, '0')}`;
 
-      return `${partValues.year}.${partValues.month}.${partValues.day} ${partValues.hour}:${partValues.minute} ${offsetStr}`;
+      const result = `${partValues.year}.${partValues.month}.${partValues.day} ${partValues.hour}:${partValues.minute} ${offsetStr}`;
+      return result;
     } catch (error) {
       // Fallback to simple ISO string if formatting fails
       logger.warn(
@@ -1240,21 +1238,26 @@ export class SiteScanner {
   }
 
   /**
-   * Generate a brief markdown report with scan statistics and analysis
+   * Generate a brief report in Markdown format
    */
   private async generateReport(): Promise<void> {
     try {
       // Use lastProcessed as scan finish time (it's updated when scan completes)
-      const scanFinished = this.stateManager.getState().lastProcessed;
+      const lastProcessed = this.stateManager.getState().lastProcessed;
       const rawSiteDomain = new URL(this.config.siteUrl).host;
       const siteDomain = decodeDomain(rawSiteDomain); // Decode punycode domains
 
+      // Get scan start time from StateManager
+      const savedStartTime = this.stateManager.getScanStartTime();
+      const effectiveStartTime = savedStartTime ? new Date(savedStartTime) : new Date();
+
       // Format dates with timezone
-      const scanStartedStr = this.formatDateWithTimezone(this.scanStartTime);
-      const scanFinishedStr = this.formatDateWithTimezone(scanFinished);
+
+      const scanStartedStr = this.formatDateWithTimezone(effectiveStartTime);
+      const scanFinishedStr = this.formatDateWithTimezone(lastProcessed);
 
       // Calculate time elapsed
-      const elapsedMs = scanFinished.getTime() - this.scanStartTime.getTime();
+      const elapsedMs = lastProcessed.getTime() - effectiveStartTime.getTime();
       const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
       const elapsedMinutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
       const elapsedSeconds = Math.floor((elapsedMs % (1000 * 60)) / 1000);
@@ -1507,6 +1510,7 @@ export class SiteScanner {
   async shutdown(): Promise<void> {
     logger.info('Shutdown signal received, saving final results...');
     try {
+      // During shutdown, rely on StateManager for scanStartTime
       await this.saveFinalResults();
       logger.info('Final results saved successfully before shutdown');
     } catch (error) {

@@ -88,7 +88,7 @@ ENVIRONMENT VARIABLES:
   RESPECT_ROBOTS_TXT            Respect robots.txt (true/false)
   NO_COLOR                      Disable colors (true/false)
   EXCLUDE_RULES                 JSON array of exclusion rules
-  TZ                            Timezone for date formatting (e.g., Europe/Moscow)
+  TIMEZONE                      Timezone for date formatting (e.g., Europe/Moscow, America/New_York)
 
 EXCLUSION RULES FORMAT (exclude.yaml):
   - mode: prefix
