@@ -334,7 +334,7 @@ export class StateManager {
         lastProcessed: updateLastProcessed
           ? new Date().toISOString()
           : this.state.lastProcessed.toISOString(),
-        scanStartTime: this.state.scanStartTime,
+        scanStartTime: this.state.scanStartTime?.toISOString(),
         totalPagesScanned: this.state.completed.size,
         totalQueued: this.state.queued.length,
         totalFailed: this.state.failed.size,

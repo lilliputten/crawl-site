@@ -731,7 +731,9 @@ export class SiteScanner {
           if (cachedHtml) {
             html = cachedHtml;
             title = extractTitle(html);
-            logger.info(`✓ Loaded from cache (scanned: ${count}, crawled: ${this.pages.length + 1}, queued: ${queueLength}): ${url}`);
+            logger.info(
+              `✓ Loaded from cache (scanned: ${count}, crawled: ${this.pages.length + 1}, queued: ${queueLength}): ${url}`
+            );
             // Mark as crawled since file exists
             this.crawledPages.add(normalized);
             // Don't increment newlyCrawledPagesCount - this is from cache
@@ -741,7 +743,9 @@ export class SiteScanner {
           }
         } else {
           // Loading from network
-          logger.info(`⇓ Loading (scanned: ${count}, crawled: ${this.pages.length + 1}, queued: ${queueLength}): ${url}`);
+          logger.info(
+            `⇓ Loading (scanned: ${count}, crawled: ${this.pages.length + 1}, queued: ${queueLength}): ${url}`
+          );
 
           // Fetch from network
           fetchedFromNetwork = true;
@@ -1129,7 +1133,7 @@ export class SiteScanner {
       specialLinksCount: this.specialLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
-      scanStartTime: scanStartTime || undefined,
+      scanStartTime: scanStartTime?.toISOString() || undefined,
     };
     await writeYamlFile(crawlStatePath, crawlState);
     logger.info(`Crawl state metadata saved`);

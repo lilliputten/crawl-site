@@ -22,6 +22,9 @@ export async function writeYamlFile(filePath: string, data: any): Promise<void> 
     indent: 2,
     lineWidth: -1, // Don't wrap lines
     noRefs: true, // Don't use references
+    sortKeys: true,
+    quotingType: '"',
+    // forceQuotes: true,
   });
 
   await fs.promises.writeFile(filePath, yamlContent, 'utf-8');
