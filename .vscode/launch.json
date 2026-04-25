@@ -13,7 +13,7 @@
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "tsx",
-      "args": ["--max-pages=0"]
+      "args": ["--max-pages=10", "--dest=crawl-test"]
     },
     {
       "name": "debug crawl",

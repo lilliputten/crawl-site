@@ -98,6 +98,7 @@ export class SiteScanner {
   private lastSavedBrokenLinkCount: number = 0;
   private lastSavedRedirectedPageCount: number = 0;
   private hasChangesSinceLastSave: boolean = false;
+  private newlyCrawledPagesCount: number = 0; // Track pages actually crawled from network (not loaded from cache)
 
   constructor(config: CrawlConfig, delayManager: DelayManager, stateManager: StateManager) {
     this.config = config;
@@ -266,7 +267,7 @@ export class SiteScanner {
    * Save current progress to files (called periodically during scanning)
    */
   private async saveProgress(): Promise<void> {
-    // Only save if there are actual changes
+    // Only save if there are actual changes AND we have new pages crawled from network
     const currentPageCount = this.pages.length;
     const currentBrokenLinkCount = this.brokenLinks.size;
     const currentRedirectedPageCount = this.redirectedPages.length;
@@ -275,8 +276,15 @@ export class SiteScanner {
     const hasNewBrokenLinks = currentBrokenLinkCount > this.lastSavedBrokenLinkCount;
     const hasNewRedirectedPages = currentRedirectedPageCount > this.lastSavedRedirectedPageCount;
 
-    if (!hasNewPages && !hasNewBrokenLinks && !hasNewRedirectedPages) {
-      logger.debug('No new pages, broken links, or redirects found, skipping save');
+    // Skip save if no new data was added OR all pages were just loaded from cache (no network crawling)
+    if (
+      (!hasNewPages || this.newlyCrawledPagesCount === 0) &&
+      !hasNewBrokenLinks &&
+      !hasNewRedirectedPages
+    ) {
+      logger.debug(
+        'No new pages crawled from network, broken links, or redirects found, skipping save'
+      );
       return;
     }
 
@@ -285,11 +293,29 @@ export class SiteScanner {
     // Update broken links by removing successfully crawled pages
     this.updateBrokenLinks();
 
-    // Save broken links
-    await this.saveBrokenLinks(true);
+    // Save broken links with status codes
+    await this.saveBrokenLinksToFile();
 
     // Save redirected pages
     await this.saveRedirectedPages();
+
+    // Save completed pages
+    await this.saveCompletedPages();
+
+    // Save internal links in YAML format
+    if (this.internalLinks.size > 0) {
+      const internalLinksPath = path.join(this.config.stateDir, 'internal-links.yaml');
+      await writeYamlFile(internalLinksPath, Array.from(this.internalLinks).sort());
+      logger.info(
+        `Internal links saved to ${internalLinksPath} (${this.internalLinks.size} links)`
+      );
+    }
+
+    // Save broken links with status codes
+    await this.saveBrokenLinksToFile();
+
+    // Save external links
+    await this.saveExternalLinksToFile();
 
     // Save partial sitemap in YAML format
     if (this.pages.length > 0) {
@@ -312,12 +338,11 @@ export class SiteScanner {
       logger.debug(`Progress saved: ${this.pages.length} pages scanned`);
     }
 
-    // Save crawl state with crawled pages info
+    // Save crawl state metadata (without large arrays - those are in separate files)
     const crawlStatePath = path.join(this.config.stateDir, 'crawl-state.yaml');
     const crawlState = {
       totalPagesScanned: this.pages.length,
       excludedUrlsCount: this.excludedUrlsCount,
-      crawledPages: Array.from(this.crawledPages).sort(),
       internalLinksCount: this.internalLinks.size,
       brokenLinksCount: this.brokenLinks.size,
       externalLinksCount: this.externalLinks.size,
@@ -326,110 +351,14 @@ export class SiteScanner {
       scanStartTime: this.scanStartTime.toISOString(),
     };
     await writeYamlFile(crawlStatePath, crawlState);
-    logger.debug(`Crawl state saved: ${this.crawledPages.size} pages crawled`);
-
-    // Save link relations in hierarchical format (excluding self-references)
-    try {
-      logger.info(`Processing ${this.linkRelations.length} link relations...`);
-
-      if (this.linkRelations.length > 0) {
-        const siteDomain = new URL(this.config.siteUrl).host;
-        logger.info(`Site domain: ${siteDomain}`);
-
-        // Separate internal and external relations
-        const internalRelations: LinkRelation[] = [];
-        const externalRelations: LinkRelation[] = [];
-
-        this.linkRelations.forEach((relation) => {
-          // Skip self-referenced links
-          if (relation.sourceUrl === relation.targetUrl) {
-            return;
-          }
-
-          try {
-            const targetDomain = new URL(relation.targetUrl).host;
-            if (targetDomain === siteDomain) {
-              internalRelations.push(relation);
-            } else {
-              externalRelations.push(relation);
-            }
-          } catch (error) {
-            logger.info(`Invalid URL in relation: ${relation.targetUrl}`);
-          }
-        });
-
-        logger.info(
-          `Separated: ${internalRelations.length} internal, ${externalRelations.length} external`
-        );
-
-        // Save internal link relations in YAML format
-        if (internalRelations.length > 0) {
-          const internalPath = path.join(this.config.stateDir, 'internal-link-relations.yaml');
-          const hierarchicalInternal: Record<string, string[]> = {};
-
-          internalRelations.forEach((relation) => {
-            if (!hierarchicalInternal[relation.targetUrl]) {
-              hierarchicalInternal[relation.targetUrl] = [];
-            }
-            if (!hierarchicalInternal[relation.targetUrl].includes(relation.sourceUrl)) {
-              hierarchicalInternal[relation.targetUrl].push(relation.sourceUrl);
-            }
-          });
-
-          const sortedInternal: Record<string, string[]> = {};
-          Object.keys(hierarchicalInternal)
-            .sort()
-            .forEach((key) => {
-              sortedInternal[key] = hierarchicalInternal[key].sort();
-            });
-
-          await writeYamlFile(internalPath, sortedInternal);
-          logger.info(
-            `Internal link relations saved to ${internalPath} (${Object.keys(sortedInternal).length} target URLs)`
-          );
-        }
-
-        // Save external link relations in YAML format
-        if (externalRelations.length > 0) {
-          const externalPath = path.join(this.config.stateDir, 'external-link-relations.yaml');
-          const hierarchicalExternal: Record<string, string[]> = {};
-
-          externalRelations.forEach((relation) => {
-            if (!hierarchicalExternal[relation.targetUrl]) {
-              hierarchicalExternal[relation.targetUrl] = [];
-            }
-            if (!hierarchicalExternal[relation.targetUrl].includes(relation.sourceUrl)) {
-              hierarchicalExternal[relation.targetUrl].push(relation.sourceUrl);
-            }
-          });
-
-          const sortedExternal: Record<string, string[]> = {};
-          Object.keys(hierarchicalExternal)
-            .sort()
-            .forEach((key) => {
-              sortedExternal[key] = hierarchicalExternal[key].sort();
-            });
-
-          await writeYamlFile(externalPath, sortedExternal);
-          logger.info(
-            `External link relations saved to ${externalPath} (${Object.keys(sortedExternal).length} target URLs)`
-          );
-        }
-      }
-    } catch (error) {
-      logger.error(
-        `Failed to save link relations: ${error instanceof Error ? error.message : String(error)}`
-      );
-      if (error instanceof Error && error.stack) {
-        logger.error(error.stack);
-      }
-    }
+    logger.debug(`Crawl state metadata saved`);
 
     // Update tracking variables after successful save
     this.lastSavedPageCount = this.pages.length;
     this.lastSavedBrokenLinkCount = this.brokenLinks.size;
     this.lastSavedRedirectedPageCount = this.redirectedPages.length;
     this.hasChangesSinceLastSave = false;
+    this.newlyCrawledPagesCount = 0; // Reset counter after saving
   }
 
   /**
@@ -441,6 +370,53 @@ export class SiteScanner {
       await writeYamlFile(redirectedPagesPath, this.redirectedPages);
       logger.info(
         `Redirected pages saved to ${redirectedPagesPath} (${this.redirectedPages.length} pages)`
+      );
+    }
+  }
+
+  /**
+   * Save completed pages to completed.yaml
+   */
+  private async saveCompletedPages(): Promise<void> {
+    if (this.pages.length > 0) {
+      const completedPath = path.join(this.config.stateDir, 'completed.yaml');
+      await writeYamlFile(completedPath, this.pages);
+      logger.info(`Completed pages saved to ${completedPath} (${this.pages.length} pages)`);
+    }
+  }
+
+  /**
+   * Save broken links with status codes to broken-links.yaml
+   */
+  private async saveBrokenLinksToFile(): Promise<void> {
+    if (this.brokenLinks.size > 0) {
+      const brokenLinksPath = path.join(this.config.stateDir, 'broken-links.yaml');
+
+      // Create structured data with URL and status code
+      const brokenLinksData = Array.from(this.brokenLinks)
+        .sort()
+        .map((url) => {
+          const statusCode = this.brokenLinkStatuses.get(url);
+          return {
+            url,
+            statusCode: statusCode || null,
+          };
+        });
+
+      await writeYamlFile(brokenLinksPath, brokenLinksData);
+      logger.info(`Broken links saved to ${brokenLinksPath} (${this.brokenLinks.size} links)`);
+    }
+  }
+
+  /**
+   * Save external links to external-links.yaml
+   */
+  private async saveExternalLinksToFile(): Promise<void> {
+    if (this.externalLinks.size > 0) {
+      const externalLinksPath = path.join(this.config.stateDir, 'external-links.yaml');
+      await writeYamlFile(externalLinksPath, Array.from(this.externalLinks).sort());
+      logger.info(
+        `External links saved to ${externalLinksPath} (${this.externalLinks.size} links)`
       );
     }
   }
@@ -604,8 +580,6 @@ export class SiteScanner {
     // Final save of all data
     try {
       logger.info('Saving final results...');
-      // Set scan finish time before saving
-      this.stateManager.setScanFinishTime(new Date());
       await this.saveFinalResults();
       logger.info('Final results saved successfully');
     } catch (error) {
@@ -626,7 +600,7 @@ export class SiteScanner {
     logger.info(`Excluded URLs: ${this.excludedUrlsCount}`);
     logger.info(`Redirected pages: ${this.redirectedPages.length}`);
 
-    // Update StateManager with all scanner data
+    // Update StateManager with all scanner data (for in-memory state)
     this.stateManager.updateFromScanner({
       pages: this.pages,
       brokenLinks: Array.from(this.brokenLinks),
@@ -642,10 +616,11 @@ export class SiteScanner {
       scanStartTime: this.scanStartTime.toISOString(),
     });
 
-    // Save state to disk
+    // Save all state to disk (data is saved to separate YAML files)
     await this.stateManager.saveState();
     await this.stateManager.saveLinkRelations();
     await this.stateManager.saveRedirectedPages();
+    await this.stateManager.saveBrokenLinks();
 
     return siteMap;
   }
@@ -774,6 +749,7 @@ export class SiteScanner {
             logger.info(`✓ Loaded from cache (${this.pages.length + 1}): ${url}`);
             // Mark as crawled since file exists
             this.crawledPages.add(normalized);
+            // Don't increment newlyCrawledPagesCount - this is from cache
           } else {
             // Failed to read from disk, fetch from network
             throw new Error('Failed to read cached page');
@@ -867,7 +843,7 @@ export class SiteScanner {
             this.hasChangesSinceLastSave = true;
 
             // Save broken links immediately
-            await this.saveBrokenLinks(true);
+            await this.saveBrokenLinksToFile();
 
             // Record error for delay management
             this.delayManager.recordError();
@@ -893,6 +869,10 @@ export class SiteScanner {
 
           // Save page content to crawl-default folder
           await this.savePageContent(url, html);
+
+          // Track that we crawled a new page from network
+          this.newlyCrawledPagesCount++;
+          debugger;
 
           // Clear response data to free memory
           response.data = null;
@@ -984,7 +964,7 @@ export class SiteScanner {
             `Max retries (${this.config.maxRetries}) reached for ${url}, marking as broken`
           );
           // Save broken links on each error
-          await this.saveBrokenLinks(true);
+          await this.saveBrokenLinksToFile();
         }
 
         this.delayManager.recordError();
@@ -1077,30 +1057,6 @@ export class SiteScanner {
     }
   }
 
-  private async saveBrokenLinks(silent?: boolean): Promise<void> {
-    // Save broken links in YAML format with status codes (after removing successfully crawled pages)
-    if (this.brokenLinks.size > 0) {
-      const brokenLinksPath = path.join(this.config.stateDir, 'broken-links.yaml');
-
-      // Create structured data with URL and status code
-      const brokenLinksData = Array.from(this.brokenLinks)
-        .sort()
-        .map((url) => {
-          const statusCode = this.brokenLinkStatuses.get(url);
-          return {
-            url,
-            statusCode: statusCode || null, // null if status code not available
-          };
-        });
-
-      await writeYamlFile(brokenLinksPath, brokenLinksData);
-      if (!silent)
-        logger.warn(`Broken links saved to ${brokenLinksPath} (${this.brokenLinks.size} links)`);
-    } else {
-      if (!silent) logger.info('No broken links to save (all pages crawled successfully)');
-    }
-  }
-
   /**
    * Save final results (sitemap, link reports, link relations) in YAML format
    */
@@ -1153,11 +1109,10 @@ export class SiteScanner {
       logger.info('No URLs to save in sitemap');
     }
 
-    // Save crawl state with detailed info
+    // Save crawl state metadata (without large arrays - those are in separate files)
     const crawlStatePath = path.join(this.config.stateDir, 'crawl-state.yaml');
     const crawlState = {
       totalPagesScanned: this.pages.length,
-      crawledPages: Array.from(this.crawledPages).sort(),
       internalLinksCount: this.internalLinks.size,
       brokenLinksCount: this.brokenLinks.size,
       externalLinksCount: this.externalLinks.size,
@@ -1166,7 +1121,7 @@ export class SiteScanner {
       scanStartTime: this.scanStartTime.toISOString(),
     };
     await writeYamlFile(crawlStatePath, crawlState);
-    logger.info(`Crawl state saved: ${this.crawledPages.size} pages crawled`);
+    logger.info(`Crawl state metadata saved`);
 
     // Save internal links in YAML format
     if (this.internalLinks.size > 0) {
@@ -1177,7 +1132,7 @@ export class SiteScanner {
       );
     }
 
-    await this.saveBrokenLinks();
+    await this.saveBrokenLinksToFile();
 
     // Save external links in YAML format
     if (this.externalLinks.size > 0) {

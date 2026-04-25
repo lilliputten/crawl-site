@@ -66,14 +66,13 @@ export interface CrawlState {
   queued: string[];
   completed: Map<string, PageData>;
   failed: Map<string, string>;
-  brokenLinks: string[]; // Internal links that returned errors
-  externalLinks: Set<string>; // All external links found
-  linkRelations: LinkRelation[]; // Track which pages link to which
+  brokenLinks: string[]; // Internal links that returned errors (stored in broken-links.yaml)
+  externalLinks: Set<string>; // All external links found (stored in external-links.yaml)
+  linkRelations: LinkRelation[]; // Track which pages link to which (stored in link-relations.yaml)
   lastProcessed: Date;
-  crawledPages: string[]; // URLs of pages that have been successfully crawled and saved
-  redirectedPages: RedirectedPage[]; // Pages that returned redirect status codes
+  crawledPages: string[]; // URLs of pages that have been successfully crawled and saved (stored in completed.yaml)
+  redirectedPages: RedirectedPage[]; // Pages that returned redirect status codes (stored in redirected-pages.yaml)
   scanStartTime?: string; // ISO timestamp of when scan started (for resume capability)
-  scanFinishTime?: string; // ISO timestamp of when scan finished (for accurate time elapsed calculation)
 }
 
 /**

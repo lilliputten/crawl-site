@@ -88,7 +88,7 @@ export function parseCommandLineArgs(): Partial<CrawlConfig> {
       ? Number(getValue('request-timeout', undefined))
       : undefined;
   config.dest = getValue('dest', undefined);
-  config.stateDir = getValue('state-dir', undefined);
+  config.stateDir = getValue('state-dir', config.dest);
   config.userAgent = getValue('user-agent', undefined);
 
   const respectRobotsTxtRaw = getValue('respect-robots-txt', undefined);

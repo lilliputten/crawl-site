@@ -45,7 +45,7 @@ export class StateManager {
   async initialize(): Promise<void> {
     await ensureDir(this.stateDir);
 
-    // Load broken links from broken-links.yaml first (if exists)
+    // Load broken links from broken-links.yaml (if exists)
     const brokenLinksPath = path.join(this.stateDir, 'broken-links.yaml');
     if (fileExists(brokenLinksPath)) {
       try {
@@ -84,24 +84,6 @@ export class StateManager {
         }
       } catch (error) {
         logger.warn('Failed to load external-links.yaml:', error);
-      }
-    }
-
-    // Load internal links from internal-links.yaml (if exists)
-    const internalLinksPath = path.join(this.stateDir, 'internal-links.yaml');
-    if (fileExists(internalLinksPath)) {
-      try {
-        const internalLinksData = await readYamlFile<any>(internalLinksPath);
-        if (internalLinksData && Array.isArray(internalLinksData)) {
-          // Store internal links in a temporary field since CrawlState doesn't have internalLinks array
-          // We'll use brokenLinks array structure as a reference, but we need to track this differently
-          // For now, we'll just log that we found them
-          logger.info(
-            `Found ${internalLinksData.length} internal links in internal-links.yaml (not loaded into state)`
-          );
-        }
-      } catch (error) {
-        logger.warn('Failed to load internal-links.yaml:', error);
       }
     }
 
@@ -177,6 +159,53 @@ export class StateManager {
       }
     }
 
+    // Load queued URLs from queued.yaml (if exists)
+    const queuedPath = path.join(this.stateDir, 'queued.yaml');
+    if (fileExists(queuedPath)) {
+      try {
+        const queuedData = await readYamlFile<any>(queuedPath);
+        if (queuedData && Array.isArray(queuedData)) {
+          this.state.queued = queuedData;
+          logger.info(`Loaded ${this.state.queued.length} queued URLs from queued.yaml`);
+        }
+      } catch (error) {
+        logger.warn('Failed to load queued.yaml:', error);
+      }
+    }
+
+    // Load completed pages from completed.yaml (if exists)
+    const completedPath = path.join(this.stateDir, 'completed.yaml');
+    if (fileExists(completedPath)) {
+      try {
+        const completedData = await readYamlFile<any>(completedPath);
+        if (completedData && Array.isArray(completedData)) {
+          // Convert array of PageData to Map
+          this.state.completed = new Map(completedData.map((page: PageData) => [page.url, page]));
+          logger.info(`Loaded ${this.state.completed.size} completed pages from completed.yaml`);
+        }
+      } catch (error) {
+        logger.warn('Failed to load completed.yaml:', error);
+      }
+    }
+
+    // Load failed pages from failed.yaml (if exists)
+    const failedPath = path.join(this.stateDir, 'failed.yaml');
+    if (fileExists(failedPath)) {
+      try {
+        const failedData = await readYamlFile<any>(failedPath);
+        if (failedData && Array.isArray(failedData)) {
+          // Convert array of {url, error} to Map
+          this.state.failed = new Map(
+            failedData.map((item: { url: string; error: string }) => [item.url, item.error])
+          );
+          logger.info(`Loaded ${this.state.failed.size} failed pages from failed.yaml`);
+        }
+      } catch (error) {
+        logger.warn('Failed to load failed.yaml:', error);
+      }
+    }
+
+    // Load crawl-state.yaml for metadata only (scan times, lastProcessed, etc.)
     if (fileExists(this.stateFile)) {
       try {
         const data = await readYamlFile<any>(this.stateFile);
@@ -186,58 +215,19 @@ export class StateManager {
           return;
         }
 
-        // Check if this is a summary-only file (new format) or full state file (old format)
-        const isSummaryOnly = data.totalPagesScanned !== undefined && data.queued === undefined;
-
-        if (isSummaryOnly) {
-          // This is a summary-only file, don't overwrite the state loaded from separate YAML files
-          // Just update lastProcessed and scanStartTime if available
-          if (data.lastProcessed) {
-            this.state.lastProcessed = new Date(data.lastProcessed);
-          }
-          if (data.scanStartTime) {
-            this.state.scanStartTime = data.scanStartTime;
-          }
-          if (data.scanFinishTime) {
-            this.state.scanFinishTime = data.scanFinishTime;
-          }
-          logger.info(
-            `Loaded summary from crawl-state.yaml (actual data loaded from separate YAML files)`
-          );
-        } else {
-          // This is a full state file with arrays and maps
-          // Convert arrays back to Maps and Sets
-          this.state = {
-            queued: data.queued || [],
-            completed: new Map(data.completed || []),
-            failed: new Map(data.failed || []),
-            // Keep broken links loaded from broken-links.yaml, or fall back to state file
-            brokenLinks:
-              this.state.brokenLinks.length > 0 ? this.state.brokenLinks : data.brokenLinks || [],
-            externalLinks:
-              this.state.externalLinks.size > 0
-                ? this.state.externalLinks
-                : new Set(data.externalLinks || []),
-            linkRelations:
-              this.state.linkRelations.length > 0
-                ? this.state.linkRelations
-                : data.linkRelations || [],
-            lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),
-            crawledPages: data.crawledPages || [],
-            redirectedPages:
-              this.state.redirectedPages.length > 0
-                ? this.state.redirectedPages
-                : data.redirectedPages || [],
-            scanStartTime: data.scanStartTime || this.state.scanStartTime,
-            scanFinishTime: data.scanFinishTime || this.state.scanFinishTime,
-          };
-
-          logger.info(
-            `Loaded existing state: ${this.state.completed.size} completed, ${this.state.failed.size} failed, ${this.state.queued.length} queued`
-          );
+        // Update metadata fields from crawl-state.yaml
+        if (data.lastProcessed) {
+          this.state.lastProcessed = new Date(data.lastProcessed);
         }
+        if (data.scanStartTime) {
+          this.state.scanStartTime = data.scanStartTime;
+        }
+
+        logger.info(
+          `Loaded metadata from crawl-state.yaml (actual data loaded from separate YAML files)`
+        );
       } catch (error) {
-        logger.warn('Failed to load state file, starting fresh:', error);
+        logger.warn('Failed to load crawl-state.yaml:', error);
       }
     } else {
       logger.info('No existing state found, starting fresh');
@@ -246,31 +236,62 @@ export class StateManager {
 
   /**
    * Save current state to disk
+   * Saves large datasets to separate YAML files and metadata to crawl-state.yaml
    * @param updateLastProcessed - Whether to update the lastProcessed timestamp (default: true)
    */
   async saveState(updateLastProcessed: boolean = true): Promise<void> {
     try {
-      // Convert Maps and Sets to arrays for serialization
-      const data = {
-        queued: this.state.queued,
-        completed: Array.from(this.state.completed.entries()),
-        failed: Array.from(this.state.failed.entries()),
-        brokenLinks: this.state.brokenLinks,
-        externalLinks: Array.from(this.state.externalLinks),
-        linkRelations: this.state.linkRelations,
+      // Save queued URLs to queued.yaml
+      if (this.state.queued.length > 0) {
+        const queuedPath = path.join(this.stateDir, 'queued.yaml');
+        await writeYamlFile(queuedPath, this.state.queued);
+        logger.debug(`Queued URLs saved to ${queuedPath} (${this.state.queued.length} URLs)`);
+      }
+
+      // Save completed pages to completed.yaml
+      if (this.state.completed.size > 0) {
+        const completedPath = path.join(this.stateDir, 'completed.yaml');
+        const completedData = Array.from(this.state.completed.values());
+        await writeYamlFile(completedPath, completedData);
+        logger.debug(
+          `Completed pages saved to ${completedPath} (${this.state.completed.size} pages)`
+        );
+      }
+
+      // Save failed pages to failed.yaml
+      if (this.state.failed.size > 0) {
+        const failedPath = path.join(this.stateDir, 'failed.yaml');
+        const failedData = Array.from(this.state.failed.entries()).map(([url, error]) => ({
+          url,
+          error,
+        }));
+        await writeYamlFile(failedPath, failedData);
+        logger.debug(`Failed pages saved to ${failedPath} (${this.state.failed.size} pages)`);
+      }
+
+      // Save broken links to broken-links.yaml (already handled by saveBrokenLinks)
+      // Save external links to external-links.yaml (already handled separately)
+      // Save link relations to internal/external-link-relations.yaml (already handled by saveLinkRelations)
+      // Save redirected pages to redirected-pages.yaml (already handled by saveRedirectedPages)
+
+      // Save only metadata to crawl-state.yaml (no large arrays/maps)
+      const metadata = {
         lastProcessed: updateLastProcessed
           ? new Date().toISOString()
           : this.state.lastProcessed.toISOString(),
-        redirectedPages: this.state.redirectedPages.map((p) => ({
-          ...p,
-          timestamp: p.timestamp.toISOString(),
-        })),
         scanStartTime: this.state.scanStartTime,
-        scanFinishTime: this.state.scanFinishTime,
+        totalPagesScanned: this.state.completed.size,
+        totalQueued: this.state.queued.length,
+        totalFailed: this.state.failed.size,
+        totalBrokenLinks: this.state.brokenLinks.length,
+        totalExternalLinks: this.state.externalLinks.size,
+        totalLinkRelations: this.state.linkRelations.length,
+        totalCrawledPages: this.state.crawledPages.length,
+        totalRedirectedPages: this.state.redirectedPages.length,
       };
 
-      await writeYamlFile(this.stateFile, data);
-      logger.debug('State saved successfully');
+      await writeYamlFile(this.stateFile, metadata);
+      logger.debug('State metadata saved successfully');
     } catch (error) {
       logger.error(
         `Failed to save state: ${error instanceof Error ? error.message : String(error)}`
@@ -677,21 +698,4 @@ export class StateManager {
     }
   }
 
-  /**
-   * Set the scan finish time
-   */
-  setScanFinishTime(finishTime: Date): void {
-    this.state.scanFinishTime = finishTime.toISOString();
-    logger.debug(`Scan finish time set to: ${this.state.scanFinishTime}`);
-  }
-
-  /**
-   * Get the scan finish time as a Date object, or null if not set
-   */
-  getScanFinishTime(): Date | null {
-    if (this.state.scanFinishTime) {
-      return new Date(this.state.scanFinishTime);
-    }
-    return null;
-  }
 }
