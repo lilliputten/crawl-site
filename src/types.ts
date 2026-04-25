@@ -79,6 +79,7 @@ export interface CrawlState {
   externalLinks: Set<string>; // All external links found (stored in external-links.yaml)
   jsLinks: Set<string>; // JavaScript protocol links (stored in js-links.yaml)
   nonHtmlLinks: Set<string>; // Skipped non-HTML content links (stored in non-html-links.yaml)
+  specialLinks: Set<string>; // Special links: #, tel:, mailto: (stored in special-links.yaml)
   linkRelations: LinkRelation[]; // Track which pages link to which (stored in link-relations.yaml)
   pageTitles: Map<string, string>; // Page titles stored separately (stored in page-titles.yaml)
   lastProcessed: Date;

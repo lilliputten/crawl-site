@@ -103,7 +103,6 @@ EXCLUSION RULES FORMAT (exclude.yaml):
     string: "/login"
 
 OUTPUT FILES (in dest directory):
-  sitemap.yaml                  List of all discovered URLs
   sitemap-structure.yaml        Hierarchical sitemap structure
   completed.yaml                Successfully crawled pages data
   broken-links.yaml             Broken links with status codes

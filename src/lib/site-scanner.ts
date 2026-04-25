@@ -88,6 +88,7 @@ export class SiteScanner {
   private externalLinks: Set<string> = new Set();
   private jsLinks: Set<string> = new Set(); // Track javascript: links
   private nonHtmlLinks: Set<string> = new Set(); // Track skipped non-HTML content links
+  private specialLinks: Set<string> = new Set(); // Track special links (#, tel:, mailto:)
   private linkRelations: Array<{ sourceUrl: string; targetUrl: string; linkText?: string }> = [];
   private crawledPages: Set<string> = new Set(); // Track successfully crawled pages
   private redirectedPages: RedirectedPage[] = []; // Track redirected pages
@@ -112,6 +113,7 @@ export class SiteScanner {
     this.externalLinks = new Set(this.stateManager.getExternalLinks());
     this.jsLinks = new Set(this.stateManager.getJsLinks());
     this.nonHtmlLinks = new Set(this.stateManager.getNonHtmlLinks());
+    this.specialLinks = new Set(this.stateManager.getSpecialLinks());
     this.linkRelations = this.stateManager.getLinkRelations();
 
     // Load crawled pages from completed pages in state
@@ -269,24 +271,27 @@ export class SiteScanner {
     // Save non-HTML links
     await this.saveNonHtmlLinksToFile();
 
+    // Save special links
+    await this.saveSpecialLinksToFile();
+
     // Save partial sitemap in YAML format
     if (this.pages.length > 0) {
-      const partialSiteMap: SiteMap = {
-        urls: this.pages,
-        lastUpdated: new Date(),
-      };
-
-      const sitemapPath = path.join(this.config.stateDir, 'sitemap.yaml');
-      const data = {
-        ...partialSiteMap,
-        urls: partialSiteMap.urls.map((p) => ({
-          ...p,
-          lastModified: p.lastModified?.toISOString(),
-        })),
-        lastUpdated: partialSiteMap.lastUpdated.toISOString(),
-      };
-
-      await writeYamlFile(sitemapPath, data);
+      /* // UNUSED: sitemap.yaml
+       * const partialSiteMap: SiteMap = {
+       *   urls: this.pages,
+       *   lastUpdated: new Date(),
+       * };
+       * const sitemapPath = path.join(this.config.stateDir, 'sitemap.yaml');
+       * const data = {
+       *   ...partialSiteMap,
+       *   urls: partialSiteMap.urls.map((p) => ({
+       *     ...p,
+       *     lastModified: p.lastModified?.toISOString(),
+       *   })),
+       *   lastUpdated: partialSiteMap.lastUpdated.toISOString(),
+       * };
+       * await writeYamlFile(sitemapPath, data);
+       */
       logger.debug(`Progress saved: ${this.pages.length} pages scanned`);
     }
 
@@ -301,6 +306,7 @@ export class SiteScanner {
       externalLinksCount: this.externalLinks.size,
       jsLinksCount: this.jsLinks.size,
       nonHtmlLinksCount: this.nonHtmlLinks.size,
+      specialLinksCount: this.specialLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
       scanStartTime: scanStartTime?.toISOString(),
@@ -394,6 +400,17 @@ export class SiteScanner {
       const nonHtmlLinksPath = path.join(this.config.stateDir, 'non-html-links.yaml');
       await writeYamlFile(nonHtmlLinksPath, Array.from(this.nonHtmlLinks).sort());
       logger.info(`Non-HTML links saved to ${nonHtmlLinksPath} (${this.nonHtmlLinks.size} links)`);
+    }
+  }
+
+  /**
+   * Save special links to special-links.yaml
+   */
+  private async saveSpecialLinksToFile(): Promise<void> {
+    if (this.specialLinks.size > 0) {
+      const specialLinksPath = path.join(this.config.stateDir, 'special-links.yaml');
+      await writeYamlFile(specialLinksPath, Array.from(this.specialLinks).sort());
+      logger.info(`Special links saved to ${specialLinksPath} (${this.specialLinks.size} links)`);
     }
   }
 
@@ -995,8 +1012,9 @@ export class SiteScanner {
       elements.forEach((element) => {
         const href = element.getAttribute('href');
         if (href) {
-          // Skip anchors, tel:, mailto:, and javascript: links
+          // Track special links (#, tel:, mailto:) separately
           if (href.startsWith('#') || href.startsWith('tel:') || href.startsWith('mailto:')) {
+            this.specialLinks.add(href);
             return;
           }
 
@@ -1083,18 +1101,19 @@ export class SiteScanner {
     };
 
     if (siteMap.urls.length > 0) {
-      const sitemapPath = path.join(this.config.stateDir, 'sitemap.yaml');
-      const data = {
-        ...siteMap,
-        urls: siteMap.urls.map((p) => ({
-          ...p,
-          lastModified: p.lastModified?.toISOString(),
-        })),
-        lastUpdated: siteMap.lastUpdated.toISOString(),
-      };
-
-      await writeYamlFile(sitemapPath, data);
-      logger.info(`Sitemap saved to ${sitemapPath} (${siteMap.urls.length} URLs)`);
+      /* // UNUSED: sitemap.yaml
+       * const sitemapPath = path.join(this.config.stateDir, 'sitemap.yaml');
+       * const data = {
+       *   ...siteMap,
+       *   urls: siteMap.urls.map((p) => ({
+       *     ...p,
+       *     lastModified: p.lastModified?.toISOString(),
+       *   })),
+       *   lastUpdated: siteMap.lastUpdated.toISOString(),
+       * };
+       * await writeYamlFile(sitemapPath, data);
+       * logger.info(`Sitemap saved to ${sitemapPath} (${siteMap.urls.length} URLs)`);
+       */
 
       // Save hierarchical sitemap structure (without titles, just links)
       try {
@@ -1110,7 +1129,6 @@ export class SiteScanner {
     } else {
       logger.info('No URLs to save in sitemap');
     }
-
     // Save crawl state metadata (without large arrays - those are in separate files)
     const crawlStatePath = path.join(this.config.stateDir, 'crawl-state.yaml');
     const scanStartTime = this.stateManager.getScanStartTime();
@@ -1122,6 +1140,7 @@ export class SiteScanner {
       externalLinksCount: this.externalLinks.size,
       jsLinksCount: this.jsLinks.size,
       nonHtmlLinksCount: this.nonHtmlLinks.size,
+      specialLinksCount: this.specialLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
       scanStartTime: scanStartTime || undefined,
@@ -1154,6 +1173,9 @@ export class SiteScanner {
 
     // Save non-HTML links
     await this.saveNonHtmlLinksToFile();
+
+    // Save special links
+    await this.saveSpecialLinksToFile();
 
     // Save redirected pages
     await this.saveRedirectedPages();
@@ -1352,6 +1374,7 @@ export class SiteScanner {
       const totalExternalLinks = this.externalLinks.size;
       const totalJsLinks = this.jsLinks.size;
       const totalNonHtmlLinks = this.nonHtmlLinks.size;
+      const totalSpecialLinks = this.specialLinks.size;
       const totalRedirectedPages = this.redirectedPages.length;
       const totalLinkRelations = this.linkRelations.length;
 
@@ -1424,6 +1447,9 @@ export class SiteScanner {
       }
       if (totalNonHtmlLinks > 0) {
         reportLines.push(`- **Non-HTML Links**: ${totalNonHtmlLinks}`);
+      }
+      if (totalSpecialLinks > 0) {
+        reportLines.push(`- **Special Links**: ${totalSpecialLinks} (#, tel:, mailto:)`);
       }
       reportLines.push(`- **Broken Links**: ${totalBrokenLinks}`);
       reportLines.push(`- **Redirected Pages**: ${totalRedirectedPages}`);
@@ -1513,6 +1539,8 @@ export class SiteScanner {
         reportLines.push('');
         reportLines.push(`Found links to ${externalDomains.size} unique external domains:`);
         reportLines.push('');
+        reportLines.push('| Rank | Links | URL |');
+        reportLines.push('|------|-------|-----|');
 
         // Calculate link counts per domain and sort by count (descending)
         const domainLinkCounts: Array<{ domain: string; count: number }> = [];
@@ -1537,8 +1565,10 @@ export class SiteScanner {
           return a.domain.localeCompare(b.domain);
         });
 
-        domainLinkCounts.forEach(({ domain, count }) => {
-          reportLines.push(`- **${domain}** (${count} links)`);
+        domainLinkCounts.forEach(({ domain, count }, n) => {
+          reportLines.push(
+            `| ${n + 1} | ${count} | [${escapeMarkdownText(domain)}](https://${domain}) |`
+          );
         });
         reportLines.push('');
       }
@@ -1561,7 +1591,7 @@ export class SiteScanner {
       reportLines.push('');
       reportLines.push('The following files were generated in the `crawl-default/` directory:');
       reportLines.push('');
-      reportLines.push('- `sitemap.yaml` - Complete list of discovered URLs');
+      // reportLines.push('- `sitemap.yaml` - Complete list of discovered URLs');
       reportLines.push('- `sitemap-structure.yaml` - Hierarchical sitemap structure');
       reportLines.push('- `crawl-state.yaml` - Scan state and statistics');
       reportLines.push('- `internal-links.yaml` - All internal links');
@@ -1571,6 +1601,9 @@ export class SiteScanner {
       }
       if (totalNonHtmlLinks > 0) {
         reportLines.push('- `non-html-links.yaml` - Skipped non-HTML content links');
+      }
+      if (this.specialLinks.size > 0) {
+        reportLines.push('- `special-links.yaml` - Special links (#, tel:, mailto:)');
       }
       reportLines.push('- `internal-link-relations.yaml` - Internal link relationships');
       reportLines.push('- `external-link-relations.yaml` - External link relationships');

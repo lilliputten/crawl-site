@@ -40,6 +40,7 @@ export class StateManager {
       externalLinks: new Set(),
       jsLinks: new Set(),
       nonHtmlLinks: new Set(),
+      specialLinks: new Set(),
       linkRelations: [],
       pageTitles: new Map(),
       lastProcessed: new Date(),
@@ -117,6 +118,22 @@ export class StateManager {
         }
       } catch (error) {
         logger.warn('Failed to load non-html-links.yaml:', error);
+      }
+    }
+
+    // Load special links from special-links.yaml (if exists)
+    const specialLinksPath = path.join(this.stateDir, 'special-links.yaml');
+    if (fileExists(specialLinksPath)) {
+      try {
+        const specialLinksData = await readYamlFile<any>(specialLinksPath);
+        if (specialLinksData && Array.isArray(specialLinksData)) {
+          this.state.specialLinks = new Set(specialLinksData);
+          logger.info(
+            `Loaded ${this.state.specialLinks.size} special links from special-links.yaml`
+          );
+        }
+      } catch (error) {
+        logger.warn('Failed to load special-links.yaml:', error);
       }
     }
 
@@ -356,7 +373,7 @@ export class StateManager {
           ? new Date().toISOString()
           : this.state.lastProcessed.toISOString(),
         scanStartTime: this.state.scanStartTime?.toISOString(),
-        totalPagesScanned: this.state.completed.size,
+        totalPagesScanned: 0, // this.state.completed.size,
         totalQueued: this.state.queued.length,
         totalFailed: this.state.failed.size,
         totalBrokenLinks: this.state.brokenLinks.length,
@@ -525,6 +542,13 @@ export class StateManager {
   }
 
   /**
+   * Get all special links (#, tel:, mailto:)
+   */
+  getSpecialLinks(): string[] {
+    return Array.from(this.state.specialLinks);
+  }
+
+  /**
    * Get scan start time (ISO string) if available
    */
   getScanStartTime(): Date | undefined {
@@ -567,6 +591,7 @@ export class StateManager {
       externalLinks: new Set(),
       jsLinks: new Set(),
       nonHtmlLinks: new Set(),
+      specialLinks: new Set(),
       linkRelations: [],
       pageTitles: new Map(),
       lastProcessed: new Date(),
