@@ -487,7 +487,6 @@ export class StateManager {
     linkRelations: LinkRelation[];
     crawledPages: string[];
     redirectedPages?: RedirectedPage[];
-    scanStartTime?: string;
   }): void {
     // Update completed pages
     data.pages.forEach((page) => {
@@ -523,14 +522,6 @@ export class StateManager {
         ).values(),
       ];
     }
-
-    // Update scan start time if provided
-    // if (data.scanStartTime) {
-    //   this.state.scanStartTime = new Date(data.scanStartTime);
-    // }
-    //
-    // // Update last processed time
-    // this.state.lastProcessed = new Date();
 
     logger.info(
       `State updated from scanner: ${data.pages.length} pages, ${data.brokenLinks.length} broken links, ${data.externalLinks.length} external links, ${data.linkRelations.length} relations${data.redirectedPages ? `, ${data.redirectedPages.length} redirects` : ''}`

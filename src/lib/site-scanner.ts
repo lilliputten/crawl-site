@@ -536,11 +536,9 @@ export class SiteScanner {
     };
 
     logger.info(`Scan complete. Found ${this.pages.length} pages`);
-    logger.info(
-      `Links summary: ${this.internalLinks.size} internal, ${this.brokenLinks.size} broken, ${this.externalLinks.size} external`
-    );
-    logger.info(`Excluded URLs: ${this.excludedUrlsCount}`);
-    logger.info(`Redirected pages: ${this.redirectedPages.length}`);
+    logger.info(`Excluded: ${this.excludedUrlsCount}`);
+    logger.info(`Broken: ${this.brokenLinks.size}`);
+    logger.info(`Redirected: ${this.redirectedPages.length}`);
 
     // Update StateManager with all scanner data (for in-memory state)
     this.stateManager.updateFromScanner({
@@ -550,7 +548,6 @@ export class SiteScanner {
       linkRelations: this.linkRelations,
       crawledPages: Array.from(this.crawledPages),
       redirectedPages: this.redirectedPages,
-      scanStartTime: scanStartTime.toISOString(),
     });
 
     // Save all state to disk (data is saved to separate YAML files)
@@ -629,7 +626,10 @@ export class SiteScanner {
   private async crawlForUrls(startUrl: string): Promise<void> {
     const queue: string[] = [startUrl];
 
+    let count = /* this.stateManager.getState().completed.size || */ 0;
+
     while (queue.length > 0) {
+      const queueLength = queue.length;
       const url = queue.shift()!;
       const normalized = normalizeUrl(decodeUrl(url));
 
@@ -660,6 +660,8 @@ export class SiteScanner {
       let title: string;
       let fetchedFromNetwork = false;
 
+      count++;
+
       try {
         // Check if page already exists on disk from previous crawl
         const pageExists = await this.pageExistsOnDisk(url);
@@ -673,7 +675,7 @@ export class SiteScanner {
           if (cachedHtml) {
             html = cachedHtml;
             title = extractTitle(html);
-            logger.info(`✓ Loaded from cache (${this.pages.length + 1}): ${url}`);
+            logger.info(`✓ Loaded from cache (${count}, queued: ${queueLength}): ${url}`);
             // Mark as crawled since file exists
             this.crawledPages.add(normalized);
             // Don't increment newlyCrawledPagesCount - this is from cache
@@ -683,7 +685,7 @@ export class SiteScanner {
           }
         } else {
           // Loading from network
-          logger.info(`Loading (${this.pages.length + 1}): ${url}`);
+          logger.info(`Loading (${count}, queued: ${queueLength}): ${url}`);
 
           // Fetch from network
           fetchedFromNetwork = true;
@@ -1210,6 +1212,7 @@ export class SiteScanner {
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
+        second: '2-digit',
         hour12: false,
       });
 
@@ -1226,7 +1229,7 @@ export class SiteScanner {
       const offsetSign = offsetMinutes <= 0 ? '+' : '-';
       const offsetStr = `${offsetSign}${String(offsetHours).padStart(2, '0')}${String(offsetMins).padStart(2, '0')}`;
 
-      const result = `${partValues.year}.${partValues.month}.${partValues.day} ${partValues.hour}:${partValues.minute} ${offsetStr}`;
+      const result = `${partValues.year}.${partValues.month}.${partValues.day} ${partValues.hour}:${partValues.minute}:${partValues.second} ${offsetStr}`;
       return result;
     } catch (error) {
       // Fallback to simple ISO string if formatting fails
@@ -1260,7 +1263,7 @@ export class SiteScanner {
       const elapsedMs = lastProcessed.getTime() - effectiveStartTime.getTime();
       const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
       const elapsedMinutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
-      const elapsedSeconds = Math.floor((elapsedMs % (1000 * 60)) / 1000);
+      const elapsedSeconds = Math.ceil((elapsedMs % (1000 * 60)) / 1000);
 
       let timeElapsedStr = '';
       if (elapsedHours > 0) {
