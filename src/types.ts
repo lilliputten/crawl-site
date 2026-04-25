@@ -66,7 +66,7 @@ export interface CrawlState {
   queued: string[];
   completed: Map<string, PageData>;
   failed: Map<string, string>;
-  brokenLinks: string[]; // Internal links that returned errors (stored in broken-links.yaml)
+  brokenLinks: BrokenLink[]; // Internal links that returned errors (stored in broken-links.yaml)
   externalLinks: Set<string>; // All external links found (stored in external-links.yaml)
   linkRelations: LinkRelation[]; // Track which pages link to which (stored in link-relations.yaml)
   lastProcessed: Date;
@@ -90,8 +90,7 @@ export interface RedirectedPage {
  */
 export interface BrokenLink {
   url: string; // The URL that failed
-  statusCode?: number; // HTTP status code if available (404, 500, etc.)
-  error?: string; // Error message
+  statusCode?: number | null; // HTTP status code if available (404, 500, etc.)
   timestamp: Date; // When the failure was detected
 }
 

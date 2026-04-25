@@ -8,8 +8,23 @@ import { configureLogger as configureRobotsParserLogger } from '@/lib/robots-par
 import { configureLogger as configureSitemapParserLogger } from '@/lib/sitemap-parser';
 import { configureLogger as configureUrlExcluderLogger } from '@/lib/url-excluder';
 import { Logger } from '@/lib/logger';
+import minimist from 'minimist';
 
 async function main() {
+  // Check for --help or -h flag first
+  const argv = minimist(process.argv.slice(2));
+  if (argv.help || argv.h) {
+    // Execute help script
+    const { execSync } = await import('child_process');
+    try {
+      execSync('tsx src/scripts/help.ts', { stdio: 'inherit', cwd: process.cwd() });
+      process.exit(0);
+    } catch (error) {
+      console.error('Failed to display help:', error);
+      process.exit(1);
+    }
+  }
+
   let scanner: SiteScanner | null = null;
   let isShuttingDown = false;
 

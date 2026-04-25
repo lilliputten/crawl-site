@@ -1,10 +1,16 @@
 // src/lib/state-manager.ts
 
 import * as path from 'path';
-import { CrawlConfig, CrawlState, PageData, LinkRelation, RedirectedPage } from '@/types';
+import {
+  CrawlConfig,
+  CrawlState,
+  PageData,
+  LinkRelation,
+  RedirectedPage,
+  BrokenLink,
+} from '@/types';
 import { ensureDir, fileExists, readYamlFile, writeYamlFile } from './file-utils';
 import { Logger } from './logger';
-// import { formatError } from './error-formatter'; // TODO: Add error formatting utility if needed
 
 const logger = new Logger();
 
@@ -30,7 +36,7 @@ export class StateManager {
       queued: [],
       completed: new Map(),
       failed: new Map(),
-      brokenLinks: [],
+      brokenLinks: [], // Assuming BrokenLink[] type in CrawlState
       externalLinks: new Set(),
       linkRelations: [],
       lastProcessed: new Date(),
@@ -51,20 +57,14 @@ export class StateManager {
       try {
         const brokenLinksData = await readYamlFile<any>(brokenLinksPath);
         if (brokenLinksData && Array.isArray(brokenLinksData)) {
-          // Handle both old format (string[]) and new format ({url, statusCode}[])
-          if (brokenLinksData.length > 0 && typeof brokenLinksData[0] === 'object') {
-            // New format with status codes
-            this.state.brokenLinks = brokenLinksData.map((item: any) => item.url || item);
-            logger.info(
-              `Loaded ${this.state.brokenLinks.length} broken links with status codes from broken-links.yaml`
-            );
-          } else {
-            // Old format (plain strings)
-            this.state.brokenLinks = brokenLinksData;
-            logger.info(
-              `Loaded ${this.state.brokenLinks.length} broken links from broken-links.yaml`
-            );
-          }
+          this.state.brokenLinks = brokenLinksData.map((item: any) => ({
+            url: item.url || item,
+            statusCode: item.statusCode || null,
+            timestamp: item.timestamp ? new Date(item.timestamp) : new Date(),
+          }));
+          logger.info(
+            `Loaded ${this.state.brokenLinks.length} broken links with status codes from broken-links.yaml`
+          );
         }
       } catch (error) {
         logger.warn('Failed to load broken-links.yaml:', error);
@@ -381,10 +381,28 @@ export class StateManager {
   /**
    * Add a broken internal link
    */
-  addBrokenLink(url: string): void {
-    if (!this.state.brokenLinks.includes(url)) {
-      this.state.brokenLinks.push(url);
-      logger.warn(`Broken link detected: ${url}`);
+  addBrokenLink(url: string, statusCode?: number): void {
+    // Check if this URL already exists
+    const existingIndex = this.state.brokenLinks.findIndex((link) => link.url === url);
+
+    if (existingIndex !== -1) {
+      // Update existing entry with new status code and timestamp
+      this.state.brokenLinks[existingIndex] = {
+        url,
+        statusCode: statusCode || this.state.brokenLinks[existingIndex].statusCode,
+        // error: error || this.state.brokenLinks[existingIndex].error,
+        timestamp: new Date(),
+      };
+      logger.warn(`Broken link updated: ${url} (status: ${statusCode})`);
+    } else {
+      // Add new broken link entry
+      this.state.brokenLinks.push({
+        url,
+        statusCode: statusCode || null,
+        // error: error || undefined,
+        timestamp: new Date(),
+      });
+      logger.warn(`Broken link detected: ${url} (status: ${statusCode})`);
     }
   }
 
@@ -398,7 +416,7 @@ export class StateManager {
   /**
    * Get all broken links
    */
-  getBrokenLinks(): string[] {
+  getBrokenLinks(): BrokenLink[] {
     return [...this.state.brokenLinks];
   }
 
@@ -454,7 +472,7 @@ export class StateManager {
    */
   updateFromScanner(data: {
     pages: PageData[];
-    brokenLinks: string[];
+    brokenLinks: any[]; // Assuming BrokenLink[] or similar structure from scanner
     externalLinks: string[];
     linkRelations: LinkRelation[];
     crawledPages: string[];
@@ -467,7 +485,14 @@ export class StateManager {
     });
 
     // Update broken links
-    this.state.brokenLinks = [...new Set([...this.state.brokenLinks, ...data.brokenLinks])];
+    // Merge existing and new broken links, avoiding duplicates by URL
+    const existingUrls = new Set(this.state.brokenLinks.map((l) => l.url));
+    data.brokenLinks.forEach((newLink) => {
+      if (!existingUrls.has(newLink.url)) {
+        this.state.brokenLinks.push(newLink);
+        existingUrls.add(newLink.url);
+      }
+    });
 
     // Update external links
     data.externalLinks.forEach((url) => {
@@ -632,12 +657,15 @@ export class StateManager {
     if (this.state.brokenLinks.length > 0) {
       const brokenLinksPath = path.join(this.stateDir, 'broken-links.yaml');
 
-      // Save in new structured format for consistency with SiteScanner
-      // Note: StateManager doesn't track status codes, so statusCode will be null
-      const brokenLinksData = this.state.brokenLinks.sort().map((url) => ({
-        url,
-        statusCode: null, // Status codes are tracked by SiteScanner
-      }));
+      // Sort by URL and ensure all fields are present
+      const brokenLinksData = this.state.brokenLinks
+        .sort((a, b) => a.url.localeCompare(b.url))
+        .map((link) => ({
+          url: link.url,
+          statusCode: link.statusCode || null,
+          // error: link.error || undefined,
+          timestamp: link.timestamp.toISOString(),
+        }));
 
       await writeYamlFile(brokenLinksPath, brokenLinksData);
       logger.info(
@@ -648,27 +676,24 @@ export class StateManager {
     }
   }
 
-  /**
-   * Add a redirected page
+  /* // UNUSED: addRedirectedPage
+   * addRedirectedPage(url: string, statusCode: number, redirectUrl: string): void {
+   *   const redirectedPage: RedirectedPage = {
+   *     url,
+   *     statusCode,
+   *     redirectUrl,
+   *     timestamp: new Date(),
+   *   };
+   *   // Check if already exists and update if needed
+   *   const existingIndex = this.state.redirectedPages.findIndex((p) => p.url === url);
+   *   if (existingIndex !== -1) {
+   *     this.state.redirectedPages[existingIndex] = redirectedPage;
+   *   } else {
+   *     this.state.redirectedPages.push(redirectedPage);
+   *   }
+   *   logger.info(`Redirect detected: ${url} -> ${decodeUrl(redirectUrl)} (${statusCode})`);
+   * }
    */
-  addRedirectedPage(url: string, statusCode: number, redirectUrl: string): void {
-    const redirectedPage: RedirectedPage = {
-      url,
-      statusCode,
-      redirectUrl,
-      timestamp: new Date(),
-    };
-
-    // Check if already exists and update if needed
-    const existingIndex = this.state.redirectedPages.findIndex((p) => p.url === url);
-    if (existingIndex !== -1) {
-      this.state.redirectedPages[existingIndex] = redirectedPage;
-    } else {
-      this.state.redirectedPages.push(redirectedPage);
-    }
-
-    logger.info(`Redirect detected: ${url} -> ${redirectUrl} (${statusCode})`);
-  }
 
   /**
    * Get all redirected pages
@@ -683,13 +708,7 @@ export class StateManager {
   async saveRedirectedPages(): Promise<void> {
     if (this.state.redirectedPages.length > 0) {
       const redirectedPagesPath = path.join(this.stateDir, 'redirected-pages.yaml');
-      // Exclude timestamp from saved data - only keep url, statusCode, and redirectUrl
-      const data = this.state.redirectedPages.map((p) => ({
-        url: p.url,
-        statusCode: p.statusCode,
-        redirectUrl: p.redirectUrl,
-      }));
-      await writeYamlFile(redirectedPagesPath, data);
+      await writeYamlFile(redirectedPagesPath, this.state.redirectedPages);
       logger.info(
         `Redirected pages saved to ${redirectedPagesPath} (${this.state.redirectedPages.length} pages)`
       );
@@ -697,5 +716,4 @@ export class StateManager {
       logger.info('No redirected pages to save');
     }
   }
-
 }

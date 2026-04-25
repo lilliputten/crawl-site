@@ -1,7 +1,7 @@
 // src/lib/site-scanner.ts
 
 import axios from 'axios';
-import { CrawlConfig, PageData, SiteMap, LinkRelation } from '@/types';
+import { CrawlConfig, PageData, SiteMap, LinkRelation, BrokenLink, RedirectedPage } from '@/types';
 import { parseSitemapUrls, extractTitle } from './sitemap-parser';
 import { fetchRobotsTxt, isUrlAllowed } from './robots-parser';
 import { DelayManager } from './delay-manager';
@@ -17,7 +17,7 @@ import {
   decodeDomain,
 } from './url-utils';
 import { formatAxiosError, getHttpStatus } from './error-utils';
-import { writeYamlFile, ensureDir, fileExists } from './file-utils';
+import { writeYamlFile, ensureDir } from './file-utils';
 import { isUrlExcluded } from './url-excluder';
 import { JSDOM } from 'jsdom';
 import * as path from 'path';
@@ -83,12 +83,11 @@ export class SiteScanner {
   private visitedUrls: Set<string> = new Set();
   private pages: PageData[] = [];
   private internalLinks: Set<string> = new Set();
-  private brokenLinks: Set<string> = new Set();
-  private brokenLinkStatuses: Map<string, number> = new Map(); // Track HTTP status codes for broken links
+  private brokenLinks: Map<string, BrokenLink> = new Map(); // Track broken links with full metadata (keyed by URL)
   private externalLinks: Set<string> = new Set();
   private linkRelations: Array<{ sourceUrl: string; targetUrl: string; linkText?: string }> = [];
   private crawledPages: Set<string> = new Set(); // Track successfully crawled pages
-  private redirectedPages: Array<{ url: string; statusCode: number; redirectUrl: string }> = []; // Track redirected pages
+  private redirectedPages: RedirectedPage[] = []; // Track redirected pages
   private retryCounts: Map<string, number> = new Map(); // Track retry attempts per URL
   private excludedUrlsCount: number = 0; // Track excluded URLs count
   private scanStartTime: Date; // Track when scan started
@@ -97,7 +96,7 @@ export class SiteScanner {
   private lastSavedPageCount: number = 0;
   private lastSavedBrokenLinkCount: number = 0;
   private lastSavedRedirectedPageCount: number = 0;
-  private hasChangesSinceLastSave: boolean = false;
+  // private hasChangesSinceLastSave: boolean = false;
   private newlyCrawledPagesCount: number = 0; // Track pages actually crawled from network (not loaded from cache)
 
   constructor(config: CrawlConfig, delayManager: DelayManager, stateManager: StateManager) {
@@ -106,12 +105,10 @@ export class SiteScanner {
     this.stateManager = stateManager;
 
     // Load all state data from StateManager
-    this.brokenLinks = new Set(this.stateManager.getBrokenLinks());
+    const brokenLinksFromState = this.stateManager.getBrokenLinks();
+    this.brokenLinks = new Map(brokenLinksFromState.map((link) => [link.url, link]));
     this.externalLinks = new Set(this.stateManager.getExternalLinks());
     this.linkRelations = this.stateManager.getLinkRelations();
-
-    // Load broken link status codes from broken-links.yaml
-    this.loadBrokenLinkStatusCodes();
 
     // Load crawled pages from completed pages in state
     const completedPages = this.stateManager.getCompletedPages();
@@ -125,6 +122,7 @@ export class SiteScanner {
     this.redirectedPages = savedRedirectedPages.map((p) => ({
       url: p.url,
       statusCode: p.statusCode,
+      timestamp: p.timestamp,
       redirectUrl: p.redirectUrl,
     }));
 
@@ -140,54 +138,6 @@ export class SiteScanner {
     logger.info(
       `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.linkRelations.length} link relations, ${this.redirectedPages.length} redirected pages`
     );
-  }
-
-  /**
-   * Load broken link status codes from broken-links.yaml file (synchronous)
-   */
-  private loadBrokenLinkStatusCodes(): void {
-    try {
-      const brokenLinksPath = path.join(this.config.stateDir, 'broken-links.yaml');
-      if (fileExists(brokenLinksPath)) {
-        const fileContent = fs.readFileSync(brokenLinksPath, 'utf-8');
-        // Simple YAML parsing for our specific format
-        const lines = fileContent.split('\n');
-        let currentUrl: string | null = null;
-        let currentStatusCode: number | null = null;
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('- url:')) {
-            // Save previous entry if exists
-            if (currentUrl && currentStatusCode !== null) {
-              this.brokenLinkStatuses.set(currentUrl, currentStatusCode);
-            }
-            // Extract new URL
-            currentUrl = trimmed.substring(6).trim();
-            currentStatusCode = null;
-          } else if (trimmed.startsWith('statusCode:') && currentUrl) {
-            // Extract status code
-            const statusCodeStr = trimmed.substring(11).trim();
-            if (statusCodeStr !== 'null' && statusCodeStr !== 'undefined') {
-              currentStatusCode = parseInt(statusCodeStr, 10);
-            }
-          }
-        }
-
-        // Save last entry
-        if (currentUrl && currentStatusCode !== null) {
-          this.brokenLinkStatuses.set(currentUrl, currentStatusCode);
-        }
-
-        logger.info(
-          `Loaded ${this.brokenLinkStatuses.size} broken link status codes from broken-links.yaml`
-        );
-      }
-    } catch (error) {
-      logger.warn(
-        `Failed to load broken link status codes: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
   }
 
   /**
@@ -251,7 +201,7 @@ export class SiteScanner {
     const beforeCount = this.brokenLinks.size;
 
     // Remove pages that have been successfully crawled
-    this.brokenLinks.forEach((brokenUrl) => {
+    this.brokenLinks.forEach((_, brokenUrl) => {
       if (this.crawledPages.has(brokenUrl)) {
         this.brokenLinks.delete(brokenUrl);
       }
@@ -267,7 +217,7 @@ export class SiteScanner {
    * Save current progress to files (called periodically during scanning)
    */
   private async saveProgress(): Promise<void> {
-    // Only save if there are actual changes AND we have new pages crawled from network
+    // Only save if there are actual changes
     const currentPageCount = this.pages.length;
     const currentBrokenLinkCount = this.brokenLinks.size;
     const currentRedirectedPageCount = this.redirectedPages.length;
@@ -276,12 +226,11 @@ export class SiteScanner {
     const hasNewBrokenLinks = currentBrokenLinkCount > this.lastSavedBrokenLinkCount;
     const hasNewRedirectedPages = currentRedirectedPageCount > this.lastSavedRedirectedPageCount;
 
-    // Skip save if no new data was added OR all pages were just loaded from cache (no network crawling)
-    if (
-      (!hasNewPages || this.newlyCrawledPagesCount === 0) &&
-      !hasNewBrokenLinks &&
-      !hasNewRedirectedPages
-    ) {
+    // Skip save if no new data was added
+    // For pages: only save if we actually crawled new pages from network (not just loaded from cache)
+    const hasNewCrawledPages = hasNewPages && this.newlyCrawledPagesCount > 0;
+
+    if (!hasNewCrawledPages && !hasNewBrokenLinks && !hasNewRedirectedPages) {
       logger.debug(
         'No new pages crawled from network, broken links, or redirects found, skipping save'
       );
@@ -357,7 +306,7 @@ export class SiteScanner {
     this.lastSavedPageCount = this.pages.length;
     this.lastSavedBrokenLinkCount = this.brokenLinks.size;
     this.lastSavedRedirectedPageCount = this.redirectedPages.length;
-    this.hasChangesSinceLastSave = false;
+    // this.hasChangesSinceLastSave = false;
     this.newlyCrawledPagesCount = 0; // Reset counter after saving
   }
 
@@ -392,16 +341,15 @@ export class SiteScanner {
     if (this.brokenLinks.size > 0) {
       const brokenLinksPath = path.join(this.config.stateDir, 'broken-links.yaml');
 
-      // Create structured data with URL and status code
-      const brokenLinksData = Array.from(this.brokenLinks)
-        .sort()
-        .map((url) => {
-          const statusCode = this.brokenLinkStatuses.get(url);
-          return {
-            url,
-            statusCode: statusCode || null,
-          };
-        });
+      // Convert Map values to array and sort by URL
+      const brokenLinksData = Array.from(this.brokenLinks.values())
+        .sort((a, b) => a.url.localeCompare(b.url))
+        .map(({ url, statusCode, timestamp }) => ({
+          url,
+          statusCode: statusCode || null,
+          // error: error || undefined,
+          timestamp: timestamp.toISOString(),
+        }));
 
       await writeYamlFile(brokenLinksPath, brokenLinksData);
       logger.info(`Broken links saved to ${brokenLinksPath} (${this.brokenLinks.size} links)`);
@@ -603,16 +551,11 @@ export class SiteScanner {
     // Update StateManager with all scanner data (for in-memory state)
     this.stateManager.updateFromScanner({
       pages: this.pages,
-      brokenLinks: Array.from(this.brokenLinks),
+      brokenLinks: Array.from(this.brokenLinks.values()),
       externalLinks: Array.from(this.externalLinks),
       linkRelations: this.linkRelations,
       crawledPages: Array.from(this.crawledPages),
-      redirectedPages: this.redirectedPages.map((p) => ({
-        url: p.url,
-        statusCode: p.statusCode,
-        redirectUrl: p.redirectUrl,
-        timestamp: new Date(),
-      })),
+      redirectedPages: this.redirectedPages,
       scanStartTime: this.scanStartTime.toISOString(),
     });
 
@@ -662,10 +605,10 @@ export class SiteScanner {
   private async pageExistsOnDisk(url: string): Promise<boolean> {
     try {
       const filePath = urlToFilePath(url, this.config.siteUrl, this.config.dest);
-      return await fs.promises
-        .access(filePath, fs.constants.F_OK)
-        .then(() => true)
-        .catch(() => false);
+      await fs.promises.access(filePath, fs.constants.F_OK);
+      // Check if file is not empty
+      const stats = await fs.promises.stat(filePath);
+      return stats.size > 0;
     } catch {
       return false;
     }
@@ -695,16 +638,6 @@ export class SiteScanner {
     while (queue.length > 0) {
       const url = queue.shift()!;
       const normalized = normalizeUrl(decodeUrl(url));
-
-      /* // DEBUG
-       * if (normalized.includes('/аналитика-цен/')) {
-       *   console.log('[site-scanner:crawlForUrls]', {
-       *     url,
-       *     normalized,
-       *   });
-       *   debugger;
-       * }
-       */
 
       // Skip broken links
       if (this.brokenLinks.has(normalized)) {
@@ -776,8 +709,8 @@ export class SiteScanner {
 
           // Check for redirect status codes (3xx)
           if (response.status >= 300 && response.status < 400) {
-            const redirectUrl = response.headers['location'];
-            logger.info(
+            const redirectUrl = decodeUrl(response.headers['location']);
+            logger.warn(
               `↪ Redirect detected: ${url} -> ${redirectUrl || 'unknown'} (${response.status})`
             );
 
@@ -791,15 +724,33 @@ export class SiteScanner {
                   absoluteRedirectUrl = new URL(redirectUrl, baseUrlForResolution).toString();
                 }
 
-                // Add to redirected pages list
-                this.redirectedPages.push({
-                  url: normalized,
-                  statusCode: response.status,
-                  redirectUrl: decodeUrl(absoluteRedirectUrl), // Store decoded URL for readability
-                });
+                // Check if this URL is already in redirectedPages to avoid duplicates
+                const existingRedirectIndex = this.redirectedPages.findIndex(
+                  (p) => p.url === normalized
+                );
+
+                if (existingRedirectIndex !== -1) {
+                  // Update existing entry instead of adding duplicate
+                  this.redirectedPages[existingRedirectIndex] = {
+                    url: normalized,
+                    statusCode: response.status,
+                    timestamp: new Date(),
+                    redirectUrl: decodeUrl(absoluteRedirectUrl),
+                  };
+                  logger.debug(`Updated existing redirect: ${url}`);
+                } else {
+                  // Add new redirect entry
+                  this.redirectedPages.push({
+                    url: normalized,
+                    statusCode: response.status,
+                    timestamp: new Date(),
+                    redirectUrl: decodeUrl(absoluteRedirectUrl),
+                  });
+                }
 
                 // Mark that we have changes to save
-                this.hasChangesSinceLastSave = true;
+                // this.hasChangesSinceLastSave = true;
+                this.newlyCrawledPagesCount++;
 
                 // Save redirected pages immediately to prevent data loss
                 await this.saveRedirectedPages();
@@ -833,14 +784,17 @@ export class SiteScanner {
           if (response.status >= 400) {
             logger.error(`✗ HTTP ${response.status} error for ${url}, marking as broken link`);
 
-            // Add to broken links
-            this.brokenLinks.add(normalized);
-
-            // Track the HTTP status code
-            this.brokenLinkStatuses.set(normalized, response.status);
+            // Add to broken links with full metadata
+            this.brokenLinks.set(normalized, {
+              url: normalized,
+              statusCode: response.status,
+              // error: `HTTP ${response.status}`,
+              timestamp: new Date(),
+            });
 
             // Mark that we have changes to save
-            this.hasChangesSinceLastSave = true;
+            // this.hasChangesSinceLastSave = true;
+            this.newlyCrawledPagesCount++;
 
             // Save broken links immediately
             await this.saveBrokenLinksToFile();
@@ -872,7 +826,6 @@ export class SiteScanner {
 
           // Track that we crawled a new page from network
           this.newlyCrawledPagesCount++;
-          debugger;
 
           // Clear response data to free memory
           response.data = null;
@@ -882,9 +835,6 @@ export class SiteScanner {
           url: normalized,
           title,
         });
-
-        // Mark that we have new content to save
-        this.hasChangesSinceLastSave = true;
 
         // Extract links from the page - pass the ORIGINAL url, not normalized
         const { internal, external } = this.extractLinks(html, url);
@@ -929,7 +879,10 @@ export class SiteScanner {
         // No delay for cached pages - they're read instantly from disk
 
         // Save progress periodically (every 10 pages) if there are changes
-        if (this.pages.length % 10 === 0 && this.hasChangesSinceLastSave) {
+        if (
+          this.newlyCrawledPagesCount &&
+          this.newlyCrawledPagesCount % 10 === 0 /* this.hasChangesSinceLastSave && */
+        ) {
           await this.saveProgress();
           logger.info(
             `Progress: ${this.pages.length} pages scanned, ${this.brokenLinks.size} broken links found`
@@ -950,16 +903,19 @@ export class SiteScanner {
           logger.info(`Will retry ${url} (${currentRetries + 1}/${this.config.maxRetries})`);
         } else {
           // Max retries reached, mark as broken
-          this.brokenLinks.add(normalizedUrl);
-
-          // Track the HTTP status code if available
           const statusCode = getHttpStatus(error);
-          if (statusCode !== null) {
-            this.brokenLinkStatuses.set(normalizedUrl, statusCode);
-          }
+
+          // Add to broken links with full metadata
+          this.brokenLinks.set(normalizedUrl, {
+            url: normalizedUrl,
+            statusCode: statusCode || undefined,
+            // error: formatAxiosError(error),
+            timestamp: new Date(),
+          });
 
           // Mark that we have new broken links to save
-          this.hasChangesSinceLastSave = true;
+          // this.hasChangesSinceLastSave = true;
+          this.newlyCrawledPagesCount++;
           logger.error(
             `Max retries (${this.config.maxRetries}) reached for ${url}, marking as broken`
           );
@@ -1000,18 +956,6 @@ export class SiteScanner {
 
             // Normalize for tracking/storage only
             const normalized = normalizeUrl(decodeUrl(fullUrl));
-
-            /* // DEBUG
-             * if (normalized.includes('/аналитика-цен/')) {
-             *   console.log('[site-scanner:extractLinks]', {
-             *     baseUrlForResolution,
-             *     fullUrl,
-             *     normalized,
-             *     href,
-             *   });
-             *   debugger;
-             * }
-             */
 
             // Skip if this link is already marked as broken
             if (this.brokenLinks.has(normalized)) {
@@ -1408,10 +1352,11 @@ export class SiteScanner {
         reportLines.push('');
         reportLines.push('The following internal links returned errors:');
         reportLines.push('');
-        Array.from(this.brokenLinks)
+        Array.from(this.brokenLinks.keys())
           .sort()
           .forEach((url) => {
-            const statusCode = this.brokenLinkStatuses.get(url);
+            const brokenLink = this.brokenLinks.get(url);
+            const statusCode = brokenLink?.statusCode;
             const escapedUrl = escapeMarkdownText(url);
             if (statusCode) {
               reportLines.push(`- [${escapedUrl}](${url}) (HTTP ${statusCode})`);
