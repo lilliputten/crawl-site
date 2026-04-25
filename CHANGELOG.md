@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.3] - 2026-04-25
+
+### Added
+
+- **Internationalized Domain Name (IDN) Support**: Automatic punycode decoding for internationalized domains (e.g., `xn----7sbemcvc6aaeev1c4g.xn--p1ai` → `районные-будни.рф`)
+  - Decoded domain names used in file system paths for better readability
+  - All reports display Unicode domain names instead of punycode
+  - Applied to both internal and external domain tracking
+- **Timezone Configuration**: Configurable timezone for date formatting in reports
+  - New `timezone` config field with support from TZ environment variable
+  - CLI argument: `--timezone Europe/Moscow`
+  - Environment variable: `TZ=Europe/Moscow`
+  - Fallback to system default timezone if not specified
+  - Consistent date format: `YYYY.MM.DD HH:mm ±HHMM` (e.g., `2026.04.25 00:47 +0300`)
+- **Scan Time Persistence**: Scan start time is now saved and can be resumed across restarts
+  - `scanStartTime` persisted in crawl-state.yaml
+  - Reports show separate "Scan Started" and "Scan Finished" timestamps
+  - Enables accurate scan duration tracking even after interruptions
+- **Configurable Report Pages Capacity**: Customizable number of top/least linked pages in reports
+  - New `topReportPagesCount` config parameter (default: 50)
+  - CLI argument: `--top-report-pages-count=100`
+  - Environment variable: `TOP_REPORT_PAGES_COUNT=100`
+  - Both "Most Linked Pages" and "Least Linked Pages" sections use the same count
+- **Broken Link Status Codes**: HTTP status codes captured and displayed for broken links
+  - Status codes (404, 500, etc.) shown in reports alongside URLs
+  - Helps identify specific error types for debugging
+  - Graceful fallback when status code unavailable
+
+### Changed
+
+- **Report Format Improvements**: Enhanced report structure with clearer timing information
+  - Separate "Scan Started" and "Scan Finished" lines instead of combined timestamp
+  - Dynamic section headers showing actual page count (e.g., "Top 50 Most Linked Pages")
+  - Consistent timezone-aware date formatting throughout
+- **Domain Display**: All domain references now show decoded Unicode names
+  - Site header displays readable domain names
+  - External domains list shows Unicode instead of punycode
+  - Improved user experience for international sites
+
 ## [0.0.2] - 2026-04-22
 
 ### Added
@@ -33,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Two-stage architecture**: Separate scan (URL discovery) and crawl (content download) processes
 - **State management system**: Centralized StateManager for tracking queued, completed, failed pages, broken links, external links, link relations, and crawled pages
 - **Resume capability**: Full support for resuming interrupted scans and crawls from saved state
-- **Intelligent caching**: 
+- **Intelligent caching**:
   - Skips re-fetching pages already saved to disk during scanning
   - No delays applied to cached pages for instant processing
   - Broken links can be rescanned on subsequent runs

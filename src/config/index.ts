@@ -143,6 +143,12 @@ export function parseCommandLineArgs(): Partial<CrawlConfig> {
       ? Number(getValue('max-delay', undefined))
       : undefined;
 
+  // Parse topReportPagesCount
+  config.topReportPagesCount =
+    getValue('top-report-pages-count', undefined) !== undefined
+      ? Number(getValue('top-report-pages-count', undefined))
+      : undefined;
+
   // Parse exclude rules from CLI
   try {
     const excludeRaw = getValue('exclude', undefined);
@@ -227,6 +233,7 @@ export async function loadConfig(): Promise<CrawlConfig> {
     exclude: process.env.EXCLUDE_RULES ? JSON.parse(process.env.EXCLUDE_RULES) : [],
     noColor: process.env.NO_COLOR === 'true' || process.env.NO_COLOR === '1',
     maxDelay: parseInt(process.env.MAX_DELAY || '10000', 10),
+    topReportPagesCount: parseInt(process.env.TOP_REPORT_PAGES_COUNT || '50', 10),
   };
 
   // Override with command line arguments

@@ -14,8 +14,9 @@ import {
   urlToFilePath,
   isHtmlContent,
   isLikelyNonHtmlResource,
+  decodeDomain,
 } from './url-utils';
-import { formatAxiosError } from './error-utils';
+import { formatAxiosError, getHttpStatus } from './error-utils';
 import { writeYamlFile, ensureDir } from './file-utils';
 import { isUrlExcluded } from './url-excluder';
 import { JSDOM } from 'jsdom';
@@ -68,12 +69,14 @@ export class SiteScanner {
   private pages: PageData[] = [];
   private internalLinks: Set<string> = new Set();
   private brokenLinks: Set<string> = new Set();
+  private brokenLinkStatuses: Map<string, number> = new Map(); // Track HTTP status codes for broken links
   private externalLinks: Set<string> = new Set();
   private linkRelations: Array<{ sourceUrl: string; targetUrl: string; linkText?: string }> = [];
   private crawledPages: Set<string> = new Set(); // Track successfully crawled pages
   private redirectedPages: Array<{ url: string; statusCode: number; redirectUrl: string }> = []; // Track redirected pages
   private retryCounts: Map<string, number> = new Map(); // Track retry attempts per URL
   private excludedUrlsCount: number = 0; // Track excluded URLs count
+  private scanStartTime: Date; // Track when scan started
 
   // Track changes since last save
   private lastSavedPageCount: number = 0;
@@ -105,6 +108,15 @@ export class SiteScanner {
       statusCode: p.statusCode,
       redirectUrl: p.redirectUrl,
     }));
+
+    // Load scan start time from state if available, otherwise initialize to now
+    const savedScanStartTime = this.stateManager.getScanStartTime();
+    if (savedScanStartTime) {
+      this.scanStartTime = new Date(savedScanStartTime);
+      logger.info(`Resumed scan started at: ${this.scanStartTime.toISOString()}`);
+    } else {
+      this.scanStartTime = new Date();
+    }
 
     logger.info(
       `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.linkRelations.length} link relations, ${this.redirectedPages.length} redirected pages`
@@ -245,6 +257,7 @@ export class SiteScanner {
       externalLinksCount: this.externalLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
+      scanStartTime: this.scanStartTime.toISOString(),
     };
     await writeYamlFile(crawlStatePath, crawlState);
     logger.debug(`Crawl state saved: ${this.crawledPages.size} pages crawled`);
@@ -690,7 +703,7 @@ export class SiteScanner {
           if (cachedHtml) {
             html = cachedHtml;
             title = extractTitle(html);
-            logger.info(`✓ Loaded from cache: ${url}`);
+            logger.info(`✓ Loaded from cache (${this.pages.length + 1}): ${url}`);
             // Mark as crawled since file exists
             this.crawledPages.add(normalized);
           } else {
@@ -863,6 +876,13 @@ export class SiteScanner {
         } else {
           // Max retries reached, mark as broken
           this.brokenLinks.add(normalizedUrl);
+
+          // Track the HTTP status code if available
+          const statusCode = getHttpStatus(error);
+          if (statusCode !== null) {
+            this.brokenLinkStatuses.set(normalizedUrl, statusCode);
+          }
+
           // Mark that we have new broken links to save
           this.hasChangesSinceLastSave = true;
           logger.error(
@@ -963,10 +983,22 @@ export class SiteScanner {
   }
 
   private async saveBrokenLinks(silent?: boolean): Promise<void> {
-    // Save broken links in YAML format (after removing successfully crawled pages)
+    // Save broken links in YAML format with status codes (after removing successfully crawled pages)
     if (this.brokenLinks.size > 0) {
       const brokenLinksPath = path.join(this.config.stateDir, 'broken-links.yaml');
-      await writeYamlFile(brokenLinksPath, Array.from(this.brokenLinks).sort());
+
+      // Create structured data with URL and status code
+      const brokenLinksData = Array.from(this.brokenLinks)
+        .sort()
+        .map((url) => {
+          const statusCode = this.brokenLinkStatuses.get(url);
+          return {
+            url,
+            statusCode: statusCode || null, // null if status code not available
+          };
+        });
+
+      await writeYamlFile(brokenLinksPath, brokenLinksData);
       if (!silent)
         logger.warn(`Broken links saved to ${brokenLinksPath} (${this.brokenLinks.size} links)`);
     } else {
@@ -1036,6 +1068,7 @@ export class SiteScanner {
       externalLinksCount: this.externalLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
+      scanStartTime: this.scanStartTime.toISOString(),
     };
     await writeYamlFile(crawlStatePath, crawlState);
     logger.info(`Crawl state saved: ${this.crawledPages.size} pages crawled`);
@@ -1155,6 +1188,282 @@ export class SiteScanner {
       if (error instanceof Error && error.stack) {
         logger.error(error.stack);
       }
+    }
+
+    // Generate brief report
+    await this.generateReport();
+  }
+
+  /**
+   * Format a date with timezone in the format: "2026.04.25 00:47 +0300"
+   */
+  private formatDateWithTimezone(date: Date): string {
+    const timezone = this.config.timezone || 'UTC';
+
+    try {
+      // Get the offset in hours and minutes
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+
+      const parts = formatter.formatToParts(date);
+      const partValues: Record<string, string> = {};
+      parts.forEach((part) => {
+        partValues[part.type] = part.value;
+      });
+
+      // Calculate timezone offset
+      const offsetMinutes = date.getTimezoneOffset();
+      const offsetHours = Math.abs(Math.floor(offsetMinutes / 60));
+      const offsetMins = Math.abs(offsetMinutes % 60);
+      const offsetSign = offsetMinutes <= 0 ? '+' : '-';
+      const offsetStr = `${offsetSign}${String(offsetHours).padStart(2, '0')}${String(offsetMins).padStart(2, '0')}`;
+
+      return `${partValues.year}.${partValues.month}.${partValues.day} ${partValues.hour}:${partValues.minute} ${offsetStr}`;
+    } catch (error) {
+      // Fallback to simple ISO string if formatting fails
+      logger.warn(
+        `Failed to format date with timezone ${timezone}: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return date.toISOString().replace('T', ' ').substring(0, 16);
+    }
+  }
+
+  /**
+   * Generate a brief markdown report with scan statistics and analysis
+   */
+  private async generateReport(): Promise<void> {
+    try {
+      const scanFinished = new Date();
+      const rawSiteDomain = new URL(this.config.siteUrl).host;
+      const siteDomain = decodeDomain(rawSiteDomain); // Decode punycode domains
+
+      // Format dates with timezone
+      const scanStartedStr = this.formatDateWithTimezone(this.scanStartTime);
+      const scanFinishedStr = this.formatDateWithTimezone(scanFinished);
+
+      // Calculate statistics
+      const totalPagesScanned = this.pages.length;
+      const totalCrawledPages = this.crawledPages.size;
+      const totalInternalLinks = this.internalLinks.size;
+      const totalBrokenLinks = this.brokenLinks.size;
+      const totalExternalLinks = this.externalLinks.size;
+      const totalRedirectedPages = this.redirectedPages.length;
+      const totalLinkRelations = this.linkRelations.length;
+
+      // Calculate redirect status code distribution
+      const redirectStatusCodes: Record<number, number> = {};
+      this.redirectedPages.forEach((page) => {
+        redirectStatusCodes[page.statusCode] = (redirectStatusCodes[page.statusCode] || 0) + 1;
+      });
+
+      // Calculate most linked pages (configurable capacity)
+      const topReportPagesCount = this.config.topReportPagesCount || 50;
+      const linkCounts: Record<string, number> = {};
+      this.linkRelations.forEach((relation) => {
+        if (relation.sourceUrl !== relation.targetUrl) {
+          linkCounts[relation.targetUrl] = (linkCounts[relation.targetUrl] || 0) + 1;
+        }
+      });
+
+      // Sort by link count
+      const sortedPages = Object.entries(linkCounts).sort((a, b) => b[1] - a[1]);
+
+      // Get top N most linked pages
+      const topLinkedPages = sortedPages.slice(0, topReportPagesCount);
+
+      /* // Get bottom N least linked pages (pages with fewest incoming links)
+       * const leastLinkedPages = sortedPages.slice(-topReportPagesCount).reverse();
+       */
+
+      // Calculate external domains (decoded)
+      const externalDomains: Set<string> = new Set();
+      this.externalLinks.forEach((url) => {
+        try {
+          const rawDomain = new URL(url).host;
+          const decodedDomain = decodeDomain(rawDomain);
+          externalDomains.add(decodedDomain);
+        } catch {
+          // Skip invalid URLs
+        }
+      });
+
+      // Build report content
+      const reportLines: string[] = [];
+
+      reportLines.push(`# Site Scan Report`);
+      reportLines.push('');
+      reportLines.push(`**Site URL**: ${this.config.siteUrl}`);
+      reportLines.push(`**Scan Started**: ${scanStartedStr}`);
+      reportLines.push(`**Scan Finished**: ${scanFinishedStr}`);
+      reportLines.push(`**Domain**: ${siteDomain}`);
+      reportLines.push('');
+      reportLines.push('---');
+      reportLines.push('');
+
+      // Summary Section
+      reportLines.push('## Summary');
+      reportLines.push('');
+      reportLines.push(`- **Total Pages Scanned**: ${totalPagesScanned}`);
+      reportLines.push(`- **Pages Successfully Crawled**: ${totalCrawledPages}`);
+      reportLines.push(`- **Internal Links Found**: ${totalInternalLinks}`);
+      reportLines.push(
+        `- **External Links Found**: ${totalExternalLinks} (${externalDomains.size} unique domains)`
+      );
+      reportLines.push(`- **Broken Links**: ${totalBrokenLinks}`);
+      reportLines.push(`- **Redirected Pages**: ${totalRedirectedPages}`);
+      reportLines.push(`- **Total Link Relations**: ${totalLinkRelations}`);
+      reportLines.push('');
+
+      // Broken Links Section
+      if (totalBrokenLinks > 0) {
+        reportLines.push('## Broken Links');
+        reportLines.push('');
+        reportLines.push('The following internal links returned errors:');
+        reportLines.push('');
+        Array.from(this.brokenLinks)
+          .sort()
+          .forEach((url) => {
+            const statusCode = this.brokenLinkStatuses.get(url);
+            if (statusCode) {
+              reportLines.push(`- **${url}** (HTTP ${statusCode})`);
+            } else {
+              reportLines.push(`- ${url}`);
+            }
+          });
+        reportLines.push('');
+      }
+
+      // Redirected Pages Section
+      if (totalRedirectedPages > 0) {
+        reportLines.push('## Redirected Pages');
+        reportLines.push('');
+        reportLines.push('Pages that redirect to other URLs:');
+        reportLines.push('');
+
+        // Group by status code
+        Object.entries(redirectStatusCodes)
+          .sort((a, b) => Number(a[0]) - Number(b[0]))
+          .forEach(([code, count]) => {
+            reportLines.push(`### ${code} Redirects (${count})`);
+            reportLines.push('');
+            this.redirectedPages
+              .filter((page) => page.statusCode === Number(code))
+              .forEach((page) => {
+                reportLines.push(`- **${page.url}** → ${page.redirectUrl}`);
+              });
+            reportLines.push('');
+          });
+      }
+
+      // Most Linked Pages Section
+      if (topLinkedPages.length > 0) {
+        reportLines.push(`## Top ${topReportPagesCount} Most Linked Pages`);
+        reportLines.push('');
+        reportLines.push('Pages with the highest number of incoming links:');
+        reportLines.push('');
+        reportLines.push('| Rank | URL | Incoming Links |');
+        reportLines.push('|------|-----|----------------|');
+        topLinkedPages.forEach(([url, count], index) => {
+          reportLines.push(`| ${index + 1} | ${url} | ${count} |`);
+        });
+        reportLines.push('');
+      }
+
+      /* // UNUSED: Least Linked Pages Section (they all are have 1 referrrer)
+       * if (leastLinkedPages.length > 0) {
+       *   reportLines.push(`## Top ${topReportPagesCount} Least Linked Pages`);
+       *   reportLines.push('');
+       *   reportLines.push('Pages with the fewest number of incoming links:');
+       *   reportLines.push('');
+       *   reportLines.push('| Rank | URL | Incoming Links |');
+       *   reportLines.push('|------|-----|----------------|');
+       *   leastLinkedPages.forEach(([url, count], index) => {
+       *     reportLines.push(`| ${index + 1} | ${url} | ${count} |`);
+       *   });
+       *   reportLines.push('');
+       * }
+       */
+
+      // External Domains Section
+      if (externalDomains.size > 0) {
+        reportLines.push('## External Domains');
+        reportLines.push('');
+        reportLines.push(`Found links to ${externalDomains.size} unique external domains:`);
+        reportLines.push('');
+        Array.from(externalDomains)
+          .sort()
+          .forEach((domain) => {
+            const domainLinks = Array.from(this.externalLinks).filter((url) => {
+              try {
+                const rawDomain = new URL(url).host;
+                const decodedDomain = decodeDomain(rawDomain);
+                return decodedDomain === domain;
+              } catch {
+                return false;
+              }
+            });
+            reportLines.push(`- **${domain}** (${domainLinks.length} links)`);
+          });
+        reportLines.push('');
+      }
+
+      // Configuration Section
+      reportLines.push('## Scan Configuration');
+      reportLines.push('');
+      reportLines.push(`- **Crawl Delay**: ${this.config.crawlDelay}ms`);
+      reportLines.push(`- **Max Retries**: ${this.config.maxRetries}`);
+      reportLines.push(`- **Request Timeout**: ${this.config.requestTimeout}ms`);
+      reportLines.push(`- **Respect robots.txt**: ${this.config.respectRobotsTxt ? 'Yes' : 'No'}`);
+      reportLines.push(`- **Exclude Rules**: ${this.config.exclude.length} rules`);
+      if (this.excludedUrlsCount > 0) {
+        reportLines.push(`- **URLs Excluded**: ${this.excludedUrlsCount}`);
+      }
+      reportLines.push('');
+
+      // Output Files Section
+      reportLines.push('## Generated Files');
+      reportLines.push('');
+      reportLines.push('The following files were generated in the `crawl-default/` directory:');
+      reportLines.push('');
+      reportLines.push('- `sitemap.yaml` - Complete list of discovered URLs');
+      reportLines.push('- `sitemap-structure.yaml` - Hierarchical sitemap structure');
+      reportLines.push('- `crawl-state.yaml` - Scan state and statistics');
+      reportLines.push('- `internal-links.yaml` - All internal links');
+      reportLines.push('- `external-links.yaml` - All external links');
+      reportLines.push('- `internal-link-relations.yaml` - Internal link relationships');
+      reportLines.push('- `external-link-relations.yaml` - External link relationships');
+      if (totalBrokenLinks > 0) {
+        reportLines.push('- `broken-links.yaml` - List of broken links');
+      }
+      if (totalRedirectedPages > 0) {
+        reportLines.push('- `redirected-pages.yaml` - List of redirected pages');
+      }
+      reportLines.push('');
+      reportLines.push('Downloaded HTML content is saved in the `crawled-content/` directory.');
+      reportLines.push('');
+
+      // Footer
+      reportLines.push('---');
+      reportLines.push('');
+      reportLines.push(`*Report generated on ${scanFinishedStr}*`);
+      reportLines.push('');
+
+      // Write report file
+      const reportContent = reportLines.join('\n');
+      const reportPath = path.join(this.config.stateDir, 'report.md');
+      await fs.promises.writeFile(reportPath, reportContent, 'utf-8');
+      logger.info(`Scan report saved to ${reportPath}`);
+    } catch (error) {
+      logger.error(
+        `Failed to generate report: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

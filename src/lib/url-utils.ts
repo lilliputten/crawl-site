@@ -2,6 +2,9 @@
 
 import * as path from 'path';
 
+// Import punycode for IDN (Internationalized Domain Name) decoding
+const punycode = require('punycode/');
+
 /**
  * Decode URL-encoded characters, especially Cyrillic characters
  */
@@ -84,11 +87,10 @@ export function isHtmlContent(contentType: string | undefined | null): boolean {
   }
 
   const lowerContentType = contentType.toLowerCase();
-  
+
   // Check for HTML content types
   return (
-    lowerContentType.includes('text/html') ||
-    lowerContentType.includes('application/xhtml+xml')
+    lowerContentType.includes('text/html') || lowerContentType.includes('application/xhtml+xml')
   );
 }
 
@@ -99,19 +101,51 @@ export function isLikelyNonHtmlResource(url: string): boolean {
   try {
     const urlObj = new URL(url);
     const pathname = urlObj.pathname.toLowerCase();
-    
+
     // Common non-HTML file extensions
     const nonHtmlExtensions = [
-      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-      '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico',
-      '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm',
-      '.zip', '.rar', '.tar', '.gz', '.7z',
-      '.css', '.js', '.json', '.xml',
-      '.woff', '.woff2', '.ttf', '.eot', '.otf',
-      '.csv', '.txt', '.rtf'
+      '.pdf',
+      '.doc',
+      '.docx',
+      '.xls',
+      '.xlsx',
+      '.ppt',
+      '.pptx',
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.gif',
+      '.bmp',
+      '.svg',
+      '.webp',
+      '.ico',
+      '.mp3',
+      '.mp4',
+      '.avi',
+      '.mov',
+      '.wmv',
+      '.flv',
+      '.webm',
+      '.zip',
+      '.rar',
+      '.tar',
+      '.gz',
+      '.7z',
+      '.css',
+      '.js',
+      '.json',
+      '.xml',
+      '.woff',
+      '.woff2',
+      '.ttf',
+      '.eot',
+      '.otf',
+      '.csv',
+      '.txt',
+      '.rtf',
     ];
-    
-    return nonHtmlExtensions.some(ext => pathname.endsWith(ext));
+
+    return nonHtmlExtensions.some((ext) => pathname.endsWith(ext));
   } catch {
     return false;
   }
@@ -166,5 +200,33 @@ export function isSameDomain(url: string, baseUrl: string): boolean {
     return urlObj.hostname === baseObj.hostname;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Decode internationalized domain name (punycode) to Unicode
+ * Example: xn----7sbemcvc6aaeev1c4g.xn--p1ai -> районные-будни.рф
+ */
+export function decodeDomain(hostname: string): string {
+  try {
+    // Split hostname into labels and decode each punycode label
+    const labels = hostname.split('.');
+    const decodedLabels = labels.map((label) => {
+      if (label.toLowerCase().startsWith('xn--')) {
+        // This is a punycode-encoded label, decode it
+        try {
+          return punycode.toUnicode(label);
+        } catch {
+          // If decoding fails, return original label
+          return label;
+        }
+      }
+      return label;
+    });
+
+    return decodedLabels.join('.');
+  } catch {
+    // Return original hostname if any error occurs
+    return hostname;
   }
 }

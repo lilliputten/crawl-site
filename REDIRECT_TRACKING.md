@@ -133,26 +133,6 @@ For the page mentioned in the requirements:
 3. **Storage Efficiency**: Don't waste space on redirect responses
 4. **Link Graph Accuracy**: Understand actual navigation paths
 5. **Debugging**: Track down redirect chains and loops
-6. **Readable Saved Content**: HTML files saved to disk have decoded URLs in href/src attributes for better readability
-
-### HTML Content Decoding
-
-When saving page content to disk, the scanner automatically decodes URL-encoded characters in `href` and `src` attributes:
-
-**Before** (URL-encoded in saved HTML):
-
-```html
-<a href="/%D0%BE-%D0%BA%D0%BE%D0%BC%D0%BF%D0%B0%D0%BD%D0%B8%D0%B8/">About Company</a>
-<img src="/images/%D0%BB%D0%BE%D0%B3%D0%BE.png" alt="Logo" />
-```
-
-**After** (Decoded in saved HTML):
-
-```html
-<a href="/о-компании/">About Company</a> <img src="/images/лого.png" alt="Logo" />
-```
-
-This makes the saved HTML files much easier to read and debug, especially for sites with Cyrillic, Chinese, or other Unicode characters in their URLs.
 
 ## Testing
 

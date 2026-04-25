@@ -17,6 +17,8 @@ export interface CrawlConfig {
   maxTreeDepth: number; // Maximum depth for hierarchical sitemap tree building (default: 5)
   noColor: boolean; // Disable colored console output (default: false)
   maxDelay: number; // Maximum delay cap for exponential backoff (default: 10000ms)
+  timezone?: string; // Timezone for date formatting (from TZ env var, e.g., 'Europe/Moscow')
+  topReportPagesCount?: number; // Number of top/least linked pages to include in report (default: 50)
 }
 
 // URL exclusion rule types
@@ -70,6 +72,7 @@ export interface CrawlState {
   lastProcessed: Date;
   crawledPages: string[]; // URLs of pages that have been successfully crawled and saved
   redirectedPages: RedirectedPage[]; // Pages that returned redirect status codes
+  scanStartTime?: string; // ISO timestamp of when scan started (for resume capability)
 }
 
 /**
@@ -80,6 +83,16 @@ export interface RedirectedPage {
   statusCode: number; // The redirect status code (301, 302, etc.)
   redirectUrl: string; // The URL it redirects to
   timestamp: Date; // When the redirect was detected
+}
+
+/**
+ * Represents a broken link with its error status
+ */
+export interface BrokenLink {
+  url: string; // The URL that failed
+  statusCode?: number; // HTTP status code if available (404, 500, etc.)
+  error?: string; // Error message
+  timestamp: Date; // When the failure was detected
 }
 
 export interface RobotsTxt {

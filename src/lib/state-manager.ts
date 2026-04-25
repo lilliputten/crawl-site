@@ -49,12 +49,22 @@ export class StateManager {
     const brokenLinksPath = path.join(this.stateDir, 'broken-links.yaml');
     if (fileExists(brokenLinksPath)) {
       try {
-        const brokenLinksData = await readYamlFile<string[]>(brokenLinksPath);
+        const brokenLinksData = await readYamlFile<any>(brokenLinksPath);
         if (brokenLinksData && Array.isArray(brokenLinksData)) {
-          this.state.brokenLinks = brokenLinksData;
-          logger.info(
-            `Loaded ${this.state.brokenLinks.length} broken links from broken-links.yaml`
-          );
+          // Handle both old format (string[]) and new format ({url, statusCode}[])
+          if (brokenLinksData.length > 0 && typeof brokenLinksData[0] === 'object') {
+            // New format with status codes
+            this.state.brokenLinks = brokenLinksData.map((item: any) => item.url || item);
+            logger.info(
+              `Loaded ${this.state.brokenLinks.length} broken links with status codes from broken-links.yaml`
+            );
+          } else {
+            // Old format (plain strings)
+            this.state.brokenLinks = brokenLinksData;
+            logger.info(
+              `Loaded ${this.state.brokenLinks.length} broken links from broken-links.yaml`
+            );
+          }
         }
       } catch (error) {
         logger.warn('Failed to load broken-links.yaml:', error);
@@ -226,6 +236,13 @@ export class StateManager {
    */
   getExternalLinks(): string[] {
     return Array.from(this.state.externalLinks);
+  }
+
+  /**
+   * Get scan start time (ISO string) if available
+   */
+  getScanStartTime(): string | undefined {
+    return this.state.scanStartTime;
   }
 
   /**
@@ -440,7 +457,15 @@ export class StateManager {
   async saveBrokenLinks(): Promise<void> {
     if (this.state.brokenLinks.length > 0) {
       const brokenLinksPath = path.join(this.stateDir, 'broken-links.yaml');
-      await writeYamlFile(brokenLinksPath, this.state.brokenLinks.sort());
+
+      // Save in new structured format for consistency with SiteScanner
+      // Note: StateManager doesn't track status codes, so statusCode will be null
+      const brokenLinksData = this.state.brokenLinks.sort().map((url) => ({
+        url,
+        statusCode: null, // Status codes are tracked by SiteScanner
+      }));
+
+      await writeYamlFile(brokenLinksPath, brokenLinksData);
       logger.info(
         `Broken links saved to ${brokenLinksPath} (${this.state.brokenLinks.length} links)`
       );

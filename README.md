@@ -1,17 +1,17 @@
 # Crawl-Site
 
-**Version**: 0.0.2  
-**Last Updated**: 2026-04-22
+**Version**: 0.0.3  
+**Last Updated**: 2026-04-25
 
-A TypeScript-based website crawler and scanner with resume capability. It scans site structure, crawls pages, and saves HTML content while maintaining the original site structure.
+A TypeScript-based website crawler and scanner with resume capability. It scans site structure, downloads pages, and saves HTML content while maintaining the original site structure—all in a single self-sufficient process.
 
 ## Features
 
 ### Core Functionality
 
-- **Two-stage process**: Scan (discover URLs) and Crawl (download content)
+- **Self-sufficient scanning**: Single-stage process that discovers URLs, analyzes links, and downloads content
 - **Sitemap support**: Parse XML and HTML sitemaps
-- **Resume capability**: Continue crawling from where you left off
+- **Resume capability**: Continue from where you left off if interrupted
 - **Smart retry**: Failed pages are automatically retried up to configured max retries
 - **Configurable delays**: Exponential backoff on errors with configurable maximum delay
 - **State management**: Tracks progress and can resume later
@@ -134,6 +134,13 @@ pnpm scan \
   --sitemap-urls='["https://mysite.com/sitemap-index.xml","https://mysite.com/products/sitemap.xml","https://mysite.com/blog/sitemap.xml"]' \
   --crawl-delay=2000
 
+# Complex multi-sitemap example with content download
+pnpm scan \
+  --site-url=https://mysite.com \
+  --sitemap-urls='["https://mysite.com/sitemap-index.xml","https://mysite.com/products/sitemap.xml","https://mysite.com/blog/sitemap.xml"]' \
+  --crawl-delay=2000 \
+  --max-pages=100
+
 # Crawl with custom settings
 pnpm crawl --dest=./output --max-pages=100
 ```
@@ -154,6 +161,37 @@ Available arguments:
 - `--respect-robots-txt=` - Respect robots.txt (true/false)
 - `--max-pages=` - Maximum pages to crawl (0 = unlimited)
 - `--log-level=` - Log level (debug/info/warn/error)
+- `--timezone=` - Timezone for date formatting (e.g., 'Europe/Moscow', 'America/New_York')
+- `--top-report-pages-count=` - Number of top/least linked pages in report (default: 50)
+
+### New Features in v0.0.3
+
+#### Internationalized Domain Name (IDN) Support
+
+The crawler now properly handles internationalized domain names (punycode):
+
+- **Automatic decoding**: Domains like `xn----7sbemcvc6aaeev1c4g.xn--p1ai` are decoded to `районные-будни.рф`
+- **File system paths**: Saved content uses readable Unicode domain names
+- **Report display**: All reports show decoded domain names for better readability
+
+#### Enhanced Report Features
+
+**Scan Time Tracking:**
+
+- Scan start time is persisted and can be resumed across restarts
+- Reports show both "Scan Started" and "Scan Finished" timestamps
+- All times use configured timezone with format: `YYYY.MM.DD HH:mm ±HHMM`
+
+**Configurable Linked Pages:**
+
+- Top 50 most linked pages (configurable via `TOP_REPORT_PAGES_COUNT`)
+- Top 50 least linked pages (same count as most linked)
+- Both sections appear in the final scan report
+
+**Broken Link Status Codes:**
+
+- HTTP status codes (404, 500, etc.) are captured and displayed
+- Helps identify specific error types for debugging
 
 ## Usage
 
@@ -162,14 +200,11 @@ Available arguments:
 The project uses `tsx` to run TypeScript directly without compilation:
 
 ```bash
-# Basic usage
-pnpm scan    # Scan site structure (runs TypeScript source)
-pnpm crawl   # Crawl and download pages (runs TypeScript source)
-pnpm start   # Run both scan and crawl sequentially
+# Basic usage - scan downloads and saves content automatically
+pnpm scan    # Scan site, analyze links, and download all pages
 
 # With custom arguments
-pnpm scan --site-url=https://example.com --crawl-delay=2000
-pnpm crawl --dest=./output --max-pages=100
+pnpm scan --site-url=https://example.com --crawl-delay=2000 --max-pages=100
 ```
 
 ### Development Mode
@@ -187,8 +222,6 @@ After building, you can run the compiled JavaScript:
 ```bash
 pnpm build         # Compile TypeScript to JavaScript
 pnpm scan-build    # Run compiled scan.js from dist/
-pnpm crawl-build   # Run compiled crawl.js from dist/
-pnpm start-build   # Build and run both scripts
 ```
 
 ### Code Quality & Formatting
@@ -260,9 +293,7 @@ crawl-site/
 The project uses `tsx` for fast TypeScript execution without compilation:
 
 ```bash
-pnpm scan          # Run scan.ts directly with tsx
-pnpm crawl         # Run crawl.ts directly with tsx
-pnpm dev           # Run with file watching (auto-reload)
+pnpm scan          # Run scan.ts directly with tsx - handles everything
 ```
 
 **Benefits of tsx:**
@@ -346,7 +377,7 @@ pnpm test-watch    # Watch mode for tests
 
 ## Output Files
 
-After running `pnpm scan` or `pnpm crawl`, you'll find these files in the `crawl-default/` directory:
+After running `pnpm scan`, you'll find these files in the `crawl-default/` directory:
 
 ### Scan Output
 
@@ -410,7 +441,7 @@ const popularity = Object.entries(linkRelations)
 In addition to scan files, crawling generates:
 
 - **crawl-state.yaml** - Complete crawl state (can resume from this)
-- **crawled-content/** - Downloaded HTML files preserving site structure
+- **crawled-content/** - Downloaded HTML files preserving site structure with decoded URLs in href/src attributes
 
 ## Key Features
 
@@ -502,7 +533,7 @@ All sources are merged, so you can combine rules from multiple sources.
 
 **Example exclude.yaml:**
 
-```yaml
+```
 # Exclude admin and auth pages
 - mode: prefix
   string: '/admin/'
@@ -530,13 +561,13 @@ All sources are merged, so you can combine rules from multiple sources.
 
 **Environment Variable Example:**
 
-```env
+```
 EXCLUDE_RULES=[{"mode":"prefix","string":"/admin/"},{"mode":"suffix","string":".pdf"}]
 ```
 
 **CLI Example:**
 
-```bash
+```
 pnpm scan --exclude='[{"mode":"prefix","string":"/api/"}]'
 ```
 
@@ -577,7 +608,7 @@ A simple list of all discovered pages with their titles and metadata.
 **2. Hierarchical Sitemap (`sitemap-structure.yaml`):**
 A tree-like structure showing how pages are interconnected through links:
 
-```yaml
+```
 root:
   url: https://example.com/
   children:
@@ -611,10 +642,10 @@ This helps identify:
 
 ### State Management & Resume
 
-The crawler saves progress periodically (every 10 pages or 5 errors) to support resuming:
+The scanner saves progress periodically (every 10 pages or 5 errors) to support resuming:
 
 - **State files**: Stored in `STATE_DIR` (default: `./crawl-default`) in YAML format
-- **Automatic resume**: Restart the scanner/crawler and it continues from where it left off
+- **Automatic resume**: Restart the scanner and it continues from where it left off
 - **Broken link recovery**: Previously failed pages are retried on resume
 - **Progress tracking**: View `crawl-state.yaml` to see current progress
 
