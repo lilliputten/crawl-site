@@ -46,13 +46,15 @@ async function main() {
 
     logger.info('Loaded existing scan data, regenerating report and statistics...');
 
-    // Call shutdown to trigger saveFinalResults which regenerates all files including report
-    await scanner.shutdown();
+    // Call regenerateReportOnly to generate only the report without modifying state files
+    await scanner.regenerateReportOnly();
 
     logger.info('=== Report Regeneration Complete ===');
-    logger.info(`Report saved to: ${config.stateDir}/report.md`);
+    logger.info(`Report saved to: ${config.dest}/report.md`);
   } catch (error) {
-    console.error(`Report regeneration failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(
+      `Report regeneration failed: ${error instanceof Error ? error.message : String(error)}`
+    );
     process.exit(1);
   }
 }

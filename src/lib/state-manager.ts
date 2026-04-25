@@ -115,7 +115,7 @@ export class StateManager {
             url: p.url,
             statusCode: p.statusCode,
             redirectUrl: p.redirectUrl,
-            timestamp: new Date(p.timestamp),
+            timestamp: p.timestamp ? new Date(p.timestamp) : new Date(), // Use current time if timestamp not present
           }));
           logger.info(
             `Loaded ${this.state.redirectedPages.length} redirected pages from redirected-pages.yaml`
@@ -129,7 +129,7 @@ export class StateManager {
     // Load link relations from internal-link-relations.yaml and external-link-relations.yaml (if exist)
     const internalRelationsPath = path.join(this.stateDir, 'internal-link-relations.yaml');
     const externalRelationsPath = path.join(this.stateDir, 'external-link-relations.yaml');
-    
+
     if (fileExists(internalRelationsPath) || fileExists(externalRelationsPath)) {
       try {
         const linkRelations: LinkRelation[] = [];
@@ -188,7 +188,7 @@ export class StateManager {
 
         // Check if this is a summary-only file (new format) or full state file (old format)
         const isSummaryOnly = data.totalPagesScanned !== undefined && data.queued === undefined;
-        
+
         if (isSummaryOnly) {
           // This is a summary-only file, don't overwrite the state loaded from separate YAML files
           // Just update lastProcessed and scanStartTime if available
@@ -197,6 +197,9 @@ export class StateManager {
           }
           if (data.scanStartTime) {
             this.state.scanStartTime = data.scanStartTime;
+          }
+          if (data.scanFinishTime) {
+            this.state.scanFinishTime = data.scanFinishTime;
           }
           logger.info(
             `Loaded summary from crawl-state.yaml (actual data loaded from separate YAML files)`
@@ -211,12 +214,22 @@ export class StateManager {
             // Keep broken links loaded from broken-links.yaml, or fall back to state file
             brokenLinks:
               this.state.brokenLinks.length > 0 ? this.state.brokenLinks : data.brokenLinks || [],
-            externalLinks: this.state.externalLinks.size > 0 ? this.state.externalLinks : new Set(data.externalLinks || []),
-            linkRelations: this.state.linkRelations.length > 0 ? this.state.linkRelations : (data.linkRelations || []),
+            externalLinks:
+              this.state.externalLinks.size > 0
+                ? this.state.externalLinks
+                : new Set(data.externalLinks || []),
+            linkRelations:
+              this.state.linkRelations.length > 0
+                ? this.state.linkRelations
+                : data.linkRelations || [],
             lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),
             crawledPages: data.crawledPages || [],
-            redirectedPages: this.state.redirectedPages.length > 0 ? this.state.redirectedPages : (data.redirectedPages || []),
+            redirectedPages:
+              this.state.redirectedPages.length > 0
+                ? this.state.redirectedPages
+                : data.redirectedPages || [],
             scanStartTime: data.scanStartTime || this.state.scanStartTime,
+            scanFinishTime: data.scanFinishTime || this.state.scanFinishTime,
           };
 
           logger.info(
@@ -245,12 +258,15 @@ export class StateManager {
         brokenLinks: this.state.brokenLinks,
         externalLinks: Array.from(this.state.externalLinks),
         linkRelations: this.state.linkRelations,
-        lastProcessed: updateLastProcessed ? new Date().toISOString() : this.state.lastProcessed.toISOString(),
+        lastProcessed: updateLastProcessed
+          ? new Date().toISOString()
+          : this.state.lastProcessed.toISOString(),
         redirectedPages: this.state.redirectedPages.map((p) => ({
           ...p,
           timestamp: p.timestamp.toISOString(),
         })),
         scanStartTime: this.state.scanStartTime,
+        scanFinishTime: this.state.scanFinishTime,
       };
 
       await writeYamlFile(this.stateFile, data);
@@ -260,6 +276,13 @@ export class StateManager {
         `Failed to save state: ${error instanceof Error ? error.message : String(error)}`
       );
     }
+  }
+
+  /**
+   * Get the current state (read-only access)
+   */
+  getState(): CrawlState {
+    return this.state;
   }
 
   /**
@@ -579,9 +602,6 @@ export class StateManager {
     if (internalRelations.length === 0 && externalRelations.length === 0) {
       logger.debug('No link relations to save');
     }
-
-    // Also save broken links to a separate file
-    await this.saveBrokenLinks();
   }
 
   /**
@@ -642,9 +662,11 @@ export class StateManager {
   async saveRedirectedPages(): Promise<void> {
     if (this.state.redirectedPages.length > 0) {
       const redirectedPagesPath = path.join(this.stateDir, 'redirected-pages.yaml');
+      // Exclude timestamp from saved data - only keep url, statusCode, and redirectUrl
       const data = this.state.redirectedPages.map((p) => ({
-        ...p,
-        timestamp: p.timestamp.toISOString(),
+        url: p.url,
+        statusCode: p.statusCode,
+        redirectUrl: p.redirectUrl,
       }));
       await writeYamlFile(redirectedPagesPath, data);
       logger.info(
@@ -653,5 +675,23 @@ export class StateManager {
     } else {
       logger.info('No redirected pages to save');
     }
+  }
+
+  /**
+   * Set the scan finish time
+   */
+  setScanFinishTime(finishTime: Date): void {
+    this.state.scanFinishTime = finishTime.toISOString();
+    logger.debug(`Scan finish time set to: ${this.state.scanFinishTime}`);
+  }
+
+  /**
+   * Get the scan finish time as a Date object, or null if not set
+   */
+  getScanFinishTime(): Date | null {
+    if (this.state.scanFinishTime) {
+      return new Date(this.state.scanFinishTime);
+    }
+    return null;
   }
 }

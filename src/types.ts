@@ -73,6 +73,7 @@ export interface CrawlState {
   crawledPages: string[]; // URLs of pages that have been successfully crawled and saved
   redirectedPages: RedirectedPage[]; // Pages that returned redirect status codes
   scanStartTime?: string; // ISO timestamp of when scan started (for resume capability)
+  scanFinishTime?: string; // ISO timestamp of when scan finished (for accurate time elapsed calculation)
 }
 
 /**

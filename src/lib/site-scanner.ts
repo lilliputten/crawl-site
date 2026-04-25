@@ -17,7 +17,7 @@ import {
   decodeDomain,
 } from './url-utils';
 import { formatAxiosError, getHttpStatus } from './error-utils';
-import { writeYamlFile, ensureDir } from './file-utils';
+import { writeYamlFile, ensureDir, fileExists } from './file-utils';
 import { isUrlExcluded } from './url-excluder';
 import { JSDOM } from 'jsdom';
 import * as path from 'path';
@@ -69,11 +69,11 @@ function buildMinimalHeaders(userAgent: string): Record<string, string> {
 function escapeMarkdownText(text: string): string {
   // Only escape characters that have special meaning in markdown link text
   return text
-    .replace(/_/g, '\\_')      // Underscore (italic/bold)
-    .replace(/\*/g, '\\*')      // Asterisk (bold/italic)
-    .replace(/\[/g, '\\[')      // Opening bracket (links)
-    .replace(/\]/g, '\\]')      // Closing bracket (links)
-    .replace(/`/g, '\\`');      // Backtick (inline code)
+    .replace(/_/g, '\\_') // Underscore (italic/bold)
+    .replace(/\*/g, '\\*') // Asterisk (bold/italic)
+    .replace(/\[/g, '\\[') // Opening bracket (links)
+    .replace(/\]/g, '\\]') // Closing bracket (links)
+    .replace(/`/g, '\\`'); // Backtick (inline code)
 }
 
 export class SiteScanner {
@@ -109,6 +109,9 @@ export class SiteScanner {
     this.externalLinks = new Set(this.stateManager.getExternalLinks());
     this.linkRelations = this.stateManager.getLinkRelations();
 
+    // Load broken link status codes from broken-links.yaml
+    this.loadBrokenLinkStatusCodes();
+
     // Load crawled pages from completed pages in state
     const completedPages = this.stateManager.getCompletedPages();
     completedPages.forEach((page) => {
@@ -136,6 +139,54 @@ export class SiteScanner {
     logger.info(
       `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.linkRelations.length} link relations, ${this.redirectedPages.length} redirected pages`
     );
+  }
+
+  /**
+   * Load broken link status codes from broken-links.yaml file (synchronous)
+   */
+  private loadBrokenLinkStatusCodes(): void {
+    try {
+      const brokenLinksPath = path.join(this.config.stateDir, 'broken-links.yaml');
+      if (fileExists(brokenLinksPath)) {
+        const fileContent = fs.readFileSync(brokenLinksPath, 'utf-8');
+        // Simple YAML parsing for our specific format
+        const lines = fileContent.split('\n');
+        let currentUrl: string | null = null;
+        let currentStatusCode: number | null = null;
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('- url:')) {
+            // Save previous entry if exists
+            if (currentUrl && currentStatusCode !== null) {
+              this.brokenLinkStatuses.set(currentUrl, currentStatusCode);
+            }
+            // Extract new URL
+            currentUrl = trimmed.substring(6).trim();
+            currentStatusCode = null;
+          } else if (trimmed.startsWith('statusCode:') && currentUrl) {
+            // Extract status code
+            const statusCodeStr = trimmed.substring(11).trim();
+            if (statusCodeStr !== 'null' && statusCodeStr !== 'undefined') {
+              currentStatusCode = parseInt(statusCodeStr, 10);
+            }
+          }
+        }
+
+        // Save last entry
+        if (currentUrl && currentStatusCode !== null) {
+          this.brokenLinkStatuses.set(currentUrl, currentStatusCode);
+        }
+
+        logger.info(
+          `Loaded ${this.brokenLinkStatuses.size} broken link status codes from broken-links.yaml`
+        );
+      }
+    } catch (error) {
+      logger.warn(
+        `Failed to load broken link status codes: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   /**
@@ -553,6 +604,8 @@ export class SiteScanner {
     // Final save of all data
     try {
       logger.info('Saving final results...');
+      // Set scan finish time before saving
+      this.stateManager.setScanFinishTime(new Date());
       await this.saveFinalResults();
       logger.info('Final results saved successfully');
     } catch (error) {
@@ -591,7 +644,6 @@ export class SiteScanner {
 
     // Save state to disk
     await this.stateManager.saveState();
-    await this.stateManager.saveBrokenLinks();
     await this.stateManager.saveLinkRelations();
     await this.stateManager.saveRedirectedPages();
 
@@ -1238,6 +1290,16 @@ export class SiteScanner {
   }
 
   /**
+   * Regenerate only the report.md file without modifying any state files
+   * This is used by the report command for read-only report generation
+   */
+  async regenerateReportOnly(): Promise<void> {
+    logger.info('Regenerating report only (read-only mode)...');
+    await this.generateReport();
+    logger.info('Report regenerated successfully');
+  }
+
+  /**
    * Format a date with timezone in the format: "2026.04.25 00:47 +0300"
    */
   private formatDateWithTimezone(date: Date): string {
@@ -1283,7 +1345,8 @@ export class SiteScanner {
    */
   private async generateReport(): Promise<void> {
     try {
-      const scanFinished = new Date();
+      // Use lastProcessed as scan finish time (it's updated when scan completes)
+      const scanFinished = this.stateManager.getState().lastProcessed;
       const rawSiteDomain = new URL(this.config.siteUrl).host;
       const siteDomain = decodeDomain(rawSiteDomain); // Decode punycode domains
 
@@ -1296,7 +1359,7 @@ export class SiteScanner {
       const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
       const elapsedMinutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
       const elapsedSeconds = Math.floor((elapsedMs % (1000 * 60)) / 1000);
-      
+
       let timeElapsedStr = '';
       if (elapsedHours > 0) {
         timeElapsedStr = `${elapsedHours}h ${elapsedMinutes}m ${elapsedSeconds}s`;
@@ -1359,8 +1422,12 @@ export class SiteScanner {
       reportLines.push('');
       reportLines.push(`- **Site URL**: ${this.config.siteUrl}`);
       reportLines.push(`- **Scan Started**: ${scanStartedStr}`);
-      reportLines.push(`- **Scan Finished**: ${scanFinishedStr}`);
-      reportLines.push(`- **Time Elapsed**: ${timeElapsedStr}`);
+      if (scanFinishedStr) {
+        reportLines.push(`- **Scan Finished**: ${scanFinishedStr}`);
+      }
+      if (timeElapsedStr) {
+        reportLines.push(`- **Time Elapsed**: ${timeElapsedStr}`);
+      }
       reportLines.push(`- **Domain**: ${siteDomain}`);
       reportLines.push('');
       reportLines.push('---');
@@ -1418,7 +1485,9 @@ export class SiteScanner {
               .forEach((page) => {
                 const escapedUrl = escapeMarkdownText(page.url);
                 const escapedRedirectUrl = escapeMarkdownText(page.redirectUrl);
-                reportLines.push(`- [${escapedUrl}](${page.url}) → [${escapedRedirectUrl}](${page.redirectUrl})`);
+                reportLines.push(
+                  `- [${escapedUrl}](${page.url}) → [${escapedRedirectUrl}](${page.redirectUrl})`
+                );
               });
             reportLines.push('');
           });
@@ -1433,7 +1502,8 @@ export class SiteScanner {
         reportLines.push('| Rank | URL | Incoming Links |');
         reportLines.push('|------|-----|----------------|');
         topLinkedPages.forEach(([url, count], index) => {
-          reportLines.push(`| ${index + 1} | ${url} | ${count} |`);
+          const escapedUrl = escapeMarkdownText(url);
+          reportLines.push(`| ${index + 1} | [${escapedUrl}](${url}) | ${count} |`);
         });
         reportLines.push('');
       }
@@ -1514,7 +1584,8 @@ export class SiteScanner {
       // Footer
       reportLines.push('---');
       reportLines.push('');
-      reportLines.push(`*Report generated on ${scanFinishedStr}*`);
+      const reportGeneratedTime = this.formatDateWithTimezone(new Date());
+      reportLines.push(`*Report generated on ${reportGeneratedTime}*`);
       reportLines.push('');
 
       // Write report file
