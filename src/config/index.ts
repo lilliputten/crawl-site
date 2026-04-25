@@ -216,6 +216,54 @@ async function loadExcludeRules(): Promise<Array<{ mode: string; string: string 
   return rules;
 }
 
+/**
+ * Load content transformation rules from YAML files
+ * Priority: content-transform.local.yaml > content-transform.yaml
+ */
+async function loadContentTransformRules(): Promise<Array<{ find: string; replace: string; flags?: string; isRegex?: boolean }>> {
+  const yaml = await import('js-yaml');
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const rules: Array<{ find: string; replace: string; flags?: string; isRegex?: boolean }> = [];
+
+  // Try to load content-transform.yaml (project-level rules)
+  const transformYamlPath = path.join(process.cwd(), 'content-transform.yaml');
+  try {
+    if (fs.existsSync(transformYamlPath)) {
+      const fileContents = fs.readFileSync(transformYamlPath, 'utf8');
+      const loadedRules = yaml.load(fileContents) as Array<{ find: string; replace: string; flags?: string; isRegex?: boolean }>;
+      if (Array.isArray(loadedRules)) {
+        rules.push(...loadedRules);
+        console.log(`Loaded ${loadedRules.length} content transformation rules from content-transform.yaml`);
+      }
+    }
+  } catch (error) {
+    console.warn(
+      `Warning: Failed to load content-transform.yaml: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  // Try to load content-transform.local.yaml (local overrides, higher priority)
+  const transformLocalPath = path.join(process.cwd(), 'content-transform.local.yaml');
+  try {
+    if (fs.existsSync(transformLocalPath)) {
+      const fileContents = fs.readFileSync(transformLocalPath, 'utf8');
+      const loadedRules = yaml.load(fileContents) as Array<{ find: string; replace: string; flags?: string; isRegex?: boolean }>;
+      if (Array.isArray(loadedRules)) {
+        rules.push(...loadedRules);
+        console.log(`Loaded ${loadedRules.length} content transformation rules from content-transform.local.yaml`);
+      }
+    }
+  } catch (error) {
+    console.warn(
+      `Warning: Failed to load content-transform.local.yaml: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  return rules;
+}
+
 export async function loadConfig(): Promise<CrawlConfig> {
   const envConfig: Partial<CrawlConfig> = {
     siteUrl: process.env.SITE_URL || '',
@@ -251,6 +299,9 @@ export async function loadConfig(): Promise<CrawlConfig> {
   // Load exclusion rules from YAML files
   const yamlRules = await loadExcludeRules();
 
+  // Load content transformation rules from YAML files
+  const contentTransformRules = await loadContentTransformRules();
+
   // Merge exclude rules: env config < CLI args < YAML files
   const mergedExclude = [
     ...(envConfig.exclude || []),
@@ -258,7 +309,12 @@ export async function loadConfig(): Promise<CrawlConfig> {
     ...yamlRules,
   ];
 
-  const finalConfig = { ...envConfig, ...filteredCliConfig, exclude: mergedExclude } as CrawlConfig;
+  const finalConfig = { 
+    ...envConfig, 
+    ...filteredCliConfig, 
+    exclude: mergedExclude,
+    contentTransformRules: contentTransformRules.length > 0 ? contentTransformRules : undefined,
+  } as CrawlConfig;
 
   // Validate required fields
   if (!finalConfig.siteUrl) {

@@ -1,0 +1,16 @@
+# Content Transformation Rules (Local)
+# This file contains local content transformation rules that override project-level rules
+# Priority: content-transform.local.yaml > content-transform.yaml
+#
+# Each rule specifies a find/replace operation to apply to crawled HTML content
+# 
+# Rule properties:
+# - find: The string or regex pattern to search for
+# - replace: The replacement string
+# - isRegex: Whether 'find' is a regex pattern (default: false)
+# - flags: Regex flags like 'g' (global), 'i' (case-insensitive) - only used if isRegex is true
+
+# Example: Fix common typos in Russian text
+- find: "Часто задаваемы вопросы"
+  replace: "Часто задаваемые вопросы"
+  # isRegex: false (default)

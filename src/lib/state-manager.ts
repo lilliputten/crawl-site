@@ -40,7 +40,6 @@ export class StateManager {
       externalLinks: new Set(),
       jsLinks: new Set(),
       nonHtmlLinks: new Set(),
-      specialLinks: new Set(),
       linkRelations: [],
       lastProcessed: new Date(),
       crawledPages: [],
@@ -117,22 +116,6 @@ export class StateManager {
         }
       } catch (error) {
         logger.warn('Failed to load non-html-links.yaml:', error);
-      }
-    }
-
-    // Load special links from special-links.yaml (if exists)
-    const specialLinksPath = path.join(this.stateDir, 'special-links.yaml');
-    if (fileExists(specialLinksPath)) {
-      try {
-        const specialLinksData = await readYamlFile<any>(specialLinksPath);
-        if (specialLinksData && Array.isArray(specialLinksData)) {
-          this.state.specialLinks = new Set(specialLinksData);
-          logger.info(
-            `Loaded ${this.state.specialLinks.size} special links from special-links.yaml`
-          );
-        }
-      } catch (error) {
-        logger.warn('Failed to load special-links.yaml:', error);
       }
     }
 
@@ -228,13 +211,8 @@ export class StateManager {
       try {
         const completedData = await readYamlFile<any>(completedPath);
         if (completedData && Array.isArray(completedData)) {
-          // New format: URL strings only
-          this.state.completed = new Map();
-          completedData.forEach((url: string) => {
-            if (typeof url === 'string') {
-              this.state.completed.set(url, { url } as PageData);
-            }
-          });
+          // Convert array of PageData to Map
+          this.state.completed = new Map(completedData.map((page: PageData) => [page.url, page]));
           logger.info(`Loaded ${this.state.completed.size} completed pages from completed.yaml`);
         }
       } catch (error) {
@@ -305,9 +283,8 @@ export class StateManager {
       // Save completed pages to completed.yaml
       if (this.state.completed.size > 0) {
         const completedPath = path.join(this.stateDir, 'completed.yaml');
-        // Save only URL strings instead of full PageData objects
-        const completedUrls = Array.from(this.state.completed.keys());
-        await writeYamlFile(completedPath, completedUrls);
+        const completedData = Array.from(this.state.completed.values());
+        await writeYamlFile(completedPath, completedData);
         logger.debug(
           `Completed pages saved to ${completedPath} (${this.state.completed.size} pages)`
         );
@@ -334,7 +311,7 @@ export class StateManager {
         lastProcessed: updateLastProcessed
           ? new Date().toISOString()
           : this.state.lastProcessed.toISOString(),
-        scanStartTime: this.state.scanStartTime?.toISOString(),
+        scanStartTime: this.state.scanStartTime,
         totalPagesScanned: this.state.completed.size,
         totalQueued: this.state.queued.length,
         totalFailed: this.state.failed.size,
@@ -497,13 +474,6 @@ export class StateManager {
   }
 
   /**
-   * Get all special links (#, tel:, mailto:)
-   */
-  getSpecialLinks(): string[] {
-    return Array.from(this.state.specialLinks);
-  }
-
-  /**
    * Get scan start time (ISO string) if available
    */
   getScanStartTime(): Date | undefined {
@@ -546,7 +516,6 @@ export class StateManager {
       externalLinks: new Set(),
       jsLinks: new Set(),
       nonHtmlLinks: new Set(),
-      specialLinks: new Set(),
       linkRelations: [],
       lastProcessed: new Date(),
       crawledPages: [],

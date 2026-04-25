@@ -19,6 +19,7 @@ export interface CrawlConfig {
   maxDelay: number; // Maximum delay cap for exponential backoff (default: 10000ms)
   timezone?: string; // Timezone for date formatting (from TIMEZONE env var or --timezone CLI arg, e.g., 'Europe/Moscow')
   topReportPagesCount?: number; // Number of top/least linked pages to include in report (default: 50)
+  contentTransformRules?: ContentTransformRule[]; // Content transformation rules
 }
 
 // URL exclusion rule types
@@ -27,6 +28,14 @@ export type ExcludeMode = 'prefix' | 'suffix' | 'contains' | 'regex' | 'exact';
 export interface ExcludeRule {
   mode: ExcludeMode;
   string: string;
+}
+
+// Content transformation rule types
+export interface ContentTransformRule {
+  find: string; // String or regex pattern to find
+  replace: string; // Replacement string
+  flags?: string; // Regex flags (e.g., 'g', 'gi') - only used if find is a regex
+  isRegex?: boolean; // Whether find is a regex pattern (default: false)
 }
 
 // Keep CrawlerConfig as an alias for backward compatibility
@@ -70,7 +79,6 @@ export interface CrawlState {
   externalLinks: Set<string>; // All external links found (stored in external-links.yaml)
   jsLinks: Set<string>; // JavaScript protocol links (stored in js-links.yaml)
   nonHtmlLinks: Set<string>; // Skipped non-HTML content links (stored in non-html-links.yaml)
-  specialLinks: Set<string>; // Special links: #, tel:, mailto: (stored in special-links.yaml)
   linkRelations: LinkRelation[]; // Track which pages link to which (stored in link-relations.yaml)
   lastProcessed: Date;
   crawledPages: string[]; // URLs of pages that have been successfully crawled and saved (stored in completed.yaml)

@@ -1,0 +1,55 @@
+# Content Transformation Rules Example
+# This file demonstrates how to transform crawled HTML content
+# Copy this file to content-transform.yaml or content-transform.local.yaml and modify as needed
+#
+# Priority order (highest to lowest):
+# 1. content-transform.local.yaml (local overrides, not committed to repo)
+# 2. content-transform.yaml (project rules, can be committed)
+#
+# Each rule specifies a find/replace operation applied to crawled HTML content
+# 
+# Rule properties:
+# - find: The string or regex pattern to search for (required)
+# - replace: The replacement string (required)
+# - isRegex: Whether 'find' is a regex pattern (optional, default: false)
+# - flags: Regex flags like 'g' (global), 'i' (case-insensitive), 'm' (multiline) 
+#          (optional, only used if isRegex is true, default: 'g')
+
+# Example 1: Simple string replacement (most common use case)
+- find: "Часто задаваемы вопросы"
+  replace: "Часто задаваемые вопросы"
+  # isRegex defaults to false, so this does a simple string replacement
+
+# Example 2: Fix another typo
+- find: "контактная информация"
+  replace: "Контактная информация"
+
+# Example 3: Using regex with flags (case-insensitive global replacement)
+- find: "\\bhttp://"
+  replace: "https://"
+  isRegex: true
+  flags: "gi"
+
+# Example 4: Remove specific HTML comments
+- find: "<!-- DEBUG:.*?-->"
+  replace: ""
+  isRegex: true
+  flags: "g"
+
+# Example 5: Replace old domain with new domain
+- find: "old-example.com"
+  replace: "new-example.com"
+  isRegex: false
+
+# Example 6: Normalize whitespace in paragraphs
+- find: "</p>\\s+<p>"
+  replace: "</p><p>"
+  isRegex: true
+  flags: "g"
+
+# Notes:
+# - String replacements (isRegex: false) replace ALL occurrences automatically
+# - For regex patterns, use double backslashes (\\) in YAML for single backslash in regex
+# - The 'g' flag is recommended for regex to replace all occurrences
+# - Transformations are applied in the order they appear in the file
+# - If a transformation fails, the original content is preserved and an error is logged

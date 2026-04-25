@@ -19,6 +19,7 @@ import {
 import { formatAxiosError, getHttpStatus } from './error-utils';
 import { writeYamlFile, ensureDir } from './file-utils';
 import { isUrlExcluded } from './url-excluder';
+import { transformContent } from './content-transformer';
 import { JSDOM } from 'jsdom';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -87,7 +88,6 @@ export class SiteScanner {
   private externalLinks: Set<string> = new Set();
   private jsLinks: Set<string> = new Set(); // Track javascript: links
   private nonHtmlLinks: Set<string> = new Set(); // Track skipped non-HTML content links
-  private specialLinks: Set<string> = new Set(); // Track #, tel:, mailto: links
   private linkRelations: Array<{ sourceUrl: string; targetUrl: string; linkText?: string }> = [];
   private crawledPages: Set<string> = new Set(); // Track successfully crawled pages
   private redirectedPages: RedirectedPage[] = []; // Track redirected pages
@@ -112,17 +112,13 @@ export class SiteScanner {
     this.externalLinks = new Set(this.stateManager.getExternalLinks());
     this.jsLinks = new Set(this.stateManager.getJsLinks());
     this.nonHtmlLinks = new Set(this.stateManager.getNonHtmlLinks());
-    this.specialLinks = new Set(this.stateManager.getSpecialLinks());
     this.linkRelations = this.stateManager.getLinkRelations();
 
     // Load crawled pages from completed pages in state
     const completedPages = this.stateManager.getCompletedPages();
     completedPages.forEach((page) => {
       this.crawledPages.add(page.url);
-      // Only add to pages array if it has actual content (not just a URL string placeholder)
-      if (Object.keys(page).length > 1) {
-        this.pages.push(page);
-      }
+      this.pages.push(page);
     });
 
     // Load redirected pages from state
@@ -135,7 +131,7 @@ export class SiteScanner {
     }));
 
     logger.info(
-      `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.jsLinks.size} js links, ${this.nonHtmlLinks.size} non-HTML links, ${this.specialLinks.size} special links, ${this.linkRelations.length} link relations, ${this.redirectedPages.length} redirected pages`
+      `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.jsLinks.size} js links, ${this.nonHtmlLinks.size} non-HTML links, ${this.linkRelations.length} link relations, ${this.redirectedPages.length} redirected pages`
     );
   }
 
@@ -271,9 +267,6 @@ export class SiteScanner {
     // Save non-HTML links
     await this.saveNonHtmlLinksToFile();
 
-    // Save special links
-    await this.saveSpecialLinksToFile();
-
     // Save partial sitemap in YAML format
     if (this.pages.length > 0) {
       const partialSiteMap: SiteMap = {
@@ -306,7 +299,6 @@ export class SiteScanner {
       externalLinksCount: this.externalLinks.size,
       jsLinksCount: this.jsLinks.size,
       nonHtmlLinksCount: this.nonHtmlLinks.size,
-      specialLinksCount: this.specialLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
       scanStartTime: scanStartTime || undefined,
@@ -341,10 +333,8 @@ export class SiteScanner {
   private async saveCompletedPages(): Promise<void> {
     if (this.pages.length > 0) {
       const completedPath = path.join(this.config.stateDir, 'completed.yaml');
-      // Save only URL strings instead of full PageData objects
-      const completedUrls = this.pages.map((page) => page.url);
-      await writeYamlFile(completedPath, completedUrls);
-      logger.info(`Completed pages saved to ${completedPath} (${completedUrls.length} pages)`);
+      await writeYamlFile(completedPath, this.pages);
+      logger.info(`Completed pages saved to ${completedPath} (${this.pages.length} pages)`);
     }
   }
 
@@ -390,7 +380,9 @@ export class SiteScanner {
     if (this.jsLinks.size > 0) {
       const jsLinksPath = path.join(this.config.stateDir, 'js-links.yaml');
       await writeYamlFile(jsLinksPath, Array.from(this.jsLinks).sort());
-      logger.info(`JavaScript links saved to ${jsLinksPath} (${this.jsLinks.size} links)`);
+      logger.info(
+        `JavaScript links saved to ${jsLinksPath} (${this.jsLinks.size} links)`
+      );
     }
   }
 
@@ -401,18 +393,9 @@ export class SiteScanner {
     if (this.nonHtmlLinks.size > 0) {
       const nonHtmlLinksPath = path.join(this.config.stateDir, 'non-html-links.yaml');
       await writeYamlFile(nonHtmlLinksPath, Array.from(this.nonHtmlLinks).sort());
-      logger.info(`Non-HTML links saved to ${nonHtmlLinksPath} (${this.nonHtmlLinks.size} links)`);
-    }
-  }
-
-  /**
-   * Save special links to special-links.yaml
-   */
-  private async saveSpecialLinksToFile(): Promise<void> {
-    if (this.specialLinks.size > 0) {
-      const specialLinksPath = path.join(this.config.stateDir, 'special-links.yaml');
-      await writeYamlFile(specialLinksPath, Array.from(this.specialLinks).sort());
-      logger.info(`Special links saved to ${specialLinksPath} (${this.specialLinks.size} links)`);
+      logger.info(
+        `Non-HTML links saved to ${nonHtmlLinksPath} (${this.nonHtmlLinks.size} links)`
+      );
     }
   }
 
@@ -731,9 +714,7 @@ export class SiteScanner {
           if (cachedHtml) {
             html = cachedHtml;
             title = extractTitle(html);
-            logger.info(
-              `✓ Loaded from cache (scanned: ${count}, crawled: ${this.pages.length + 1}, queued: ${queueLength}): ${url}`
-            );
+            logger.info(`✓ Loaded from cache (${count}, queued: ${queueLength}): ${url}`);
             // Mark as crawled since file exists
             this.crawledPages.add(normalized);
             // Don't increment newlyCrawledPagesCount - this is from cache
@@ -743,9 +724,7 @@ export class SiteScanner {
           }
         } else {
           // Loading from network
-          logger.info(
-            `⇓ Loading (scanned: ${count}, crawled: ${this.pages.length + 1}, queued: ${queueLength}): ${url}`
-          );
+          logger.info(`Loading (${count}, queued: ${queueLength}): ${url}`);
 
           // Fetch from network
           fetchedFromNetwork = true;
@@ -876,6 +855,12 @@ export class SiteScanner {
           }
 
           html = response.data;
+          
+          // Apply content transformations if rules are configured
+          if (this.config.contentTransformRules && this.config.contentTransformRules.length > 0) {
+            html = transformContent(html, this.config.contentTransformRules);
+          }
+          
           title = extractTitle(html);
 
           // Save page content to crawl-default folder
@@ -1002,18 +987,17 @@ export class SiteScanner {
       elements.forEach((element) => {
         const href = element.getAttribute('href');
         if (href) {
-          // Track special links (#, tel:, mailto:) separately
+          // Skip anchors, tel:, mailto:, and javascript: links
           if (href.startsWith('#') || href.startsWith('tel:') || href.startsWith('mailto:')) {
-            this.specialLinks.add(href);
             return;
           }
-
+          
           // Track javascript: links separately
           if (href.startsWith('javascript:')) {
             this.jsLinks.add(href);
             return;
           }
-
+          
           try {
             // Handle relative URLs - ensure baseUrl ends with / for proper resolution
             // If baseUrl doesn't end with /, add it temporarily for URL resolution
@@ -1130,10 +1114,9 @@ export class SiteScanner {
       externalLinksCount: this.externalLinks.size,
       jsLinksCount: this.jsLinks.size,
       nonHtmlLinksCount: this.nonHtmlLinks.size,
-      specialLinksCount: this.specialLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
-      scanStartTime: scanStartTime?.toISOString() || undefined,
+      scanStartTime: scanStartTime || undefined,
     };
     await writeYamlFile(crawlStatePath, crawlState);
     logger.info(`Crawl state metadata saved`);
@@ -1163,9 +1146,6 @@ export class SiteScanner {
 
     // Save non-HTML links
     await this.saveNonHtmlLinksToFile();
-
-    // Save special links
-    await this.saveSpecialLinksToFile();
 
     // Save redirected pages
     await this.saveRedirectedPages();
@@ -1364,7 +1344,6 @@ export class SiteScanner {
       const totalExternalLinks = this.externalLinks.size;
       const totalJsLinks = this.jsLinks.size;
       const totalNonHtmlLinks = this.nonHtmlLinks.size;
-      const totalSpecialLinks = this.specialLinks.size;
       const totalRedirectedPages = this.redirectedPages.length;
       const totalLinkRelations = this.linkRelations.length;
 
@@ -1437,9 +1416,6 @@ export class SiteScanner {
       }
       if (totalNonHtmlLinks > 0) {
         reportLines.push(`- **Non-HTML Links**: ${totalNonHtmlLinks}`);
-      }
-      if (totalSpecialLinks > 0) {
-        reportLines.push(`- **Special Links** (#, tel:, mailto:): ${totalSpecialLinks}`);
       }
       reportLines.push(`- **Broken Links**: ${totalBrokenLinks}`);
       reportLines.push(`- **Redirected Pages**: ${totalRedirectedPages}`);
@@ -1529,7 +1505,7 @@ export class SiteScanner {
         reportLines.push('');
         reportLines.push(`Found links to ${externalDomains.size} unique external domains:`);
         reportLines.push('');
-
+        
         // Calculate link counts per domain and sort by count (descending)
         const domainLinkCounts: Array<{ domain: string; count: number }> = [];
         externalDomains.forEach((domain) => {
@@ -1544,7 +1520,7 @@ export class SiteScanner {
           });
           domainLinkCounts.push({ domain, count: domainLinks.length });
         });
-
+        
         // Sort by link count (descending), then alphabetically for ties
         domainLinkCounts.sort((a, b) => {
           if (b.count !== a.count) {
@@ -1552,11 +1528,9 @@ export class SiteScanner {
           }
           return a.domain.localeCompare(b.domain);
         });
-
+        
         domainLinkCounts.forEach(({ domain, count }) => {
-          const escapedDomain = escapeMarkdownText(domain);
-          const domainUrl = `https://${domain}`;
-          reportLines.push(`- [${escapedDomain}](${domainUrl}) (${count} links)`);
+          reportLines.push(`- **${domain}** (${count} links)`);
         });
         reportLines.push('');
       }
@@ -1589,9 +1563,6 @@ export class SiteScanner {
       }
       if (totalNonHtmlLinks > 0) {
         reportLines.push('- `non-html-links.yaml` - Skipped non-HTML content links');
-      }
-      if (totalSpecialLinks > 0) {
-        reportLines.push('- `special-links.yaml` - Special links (#, tel:, mailto:)');
       }
       reportLines.push('- `internal-link-relations.yaml` - Internal link relationships');
       reportLines.push('- `external-link-relations.yaml` - External link relationships');
