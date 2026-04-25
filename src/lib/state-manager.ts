@@ -228,8 +228,13 @@ export class StateManager {
       try {
         const completedData = await readYamlFile<any>(completedPath);
         if (completedData && Array.isArray(completedData)) {
-          // Convert array of PageData to Map
-          this.state.completed = new Map(completedData.map((page: PageData) => [page.url, page]));
+          // New format: URL strings only
+          this.state.completed = new Map();
+          completedData.forEach((url: string) => {
+            if (typeof url === 'string') {
+              this.state.completed.set(url, { url } as PageData);
+            }
+          });
           logger.info(`Loaded ${this.state.completed.size} completed pages from completed.yaml`);
         }
       } catch (error) {
@@ -300,8 +305,9 @@ export class StateManager {
       // Save completed pages to completed.yaml
       if (this.state.completed.size > 0) {
         const completedPath = path.join(this.stateDir, 'completed.yaml');
-        const completedData = Array.from(this.state.completed.values());
-        await writeYamlFile(completedPath, completedData);
+        // Save only URL strings instead of full PageData objects
+        const completedUrls = Array.from(this.state.completed.keys());
+        await writeYamlFile(completedPath, completedUrls);
         logger.debug(
           `Completed pages saved to ${completedPath} (${this.state.completed.size} pages)`
         );

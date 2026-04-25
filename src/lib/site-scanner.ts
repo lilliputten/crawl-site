@@ -119,7 +119,10 @@ export class SiteScanner {
     const completedPages = this.stateManager.getCompletedPages();
     completedPages.forEach((page) => {
       this.crawledPages.add(page.url);
-      this.pages.push(page);
+      // Only add to pages array if it has actual content (not just a URL string placeholder)
+      if (Object.keys(page).length > 1) {
+        this.pages.push(page);
+      }
     });
 
     // Load redirected pages from state
@@ -338,8 +341,10 @@ export class SiteScanner {
   private async saveCompletedPages(): Promise<void> {
     if (this.pages.length > 0) {
       const completedPath = path.join(this.config.stateDir, 'completed.yaml');
-      await writeYamlFile(completedPath, this.pages);
-      logger.info(`Completed pages saved to ${completedPath} (${this.pages.length} pages)`);
+      // Save only URL strings instead of full PageData objects
+      const completedUrls = this.pages.map((page) => page.url);
+      await writeYamlFile(completedPath, completedUrls);
+      logger.info(`Completed pages saved to ${completedPath} (${completedUrls.length} pages)`);
     }
   }
 
@@ -726,7 +731,7 @@ export class SiteScanner {
           if (cachedHtml) {
             html = cachedHtml;
             title = extractTitle(html);
-            logger.info(`✓ Loaded from cache (${count}, queued: ${queueLength}): ${url}`);
+            logger.info(`✓ Loaded from cache (scanned: ${count}, crawled: ${this.pages.length + 1}, queued: ${queueLength}): ${url}`);
             // Mark as crawled since file exists
             this.crawledPages.add(normalized);
             // Don't increment newlyCrawledPagesCount - this is from cache
@@ -736,7 +741,7 @@ export class SiteScanner {
           }
         } else {
           // Loading from network
-          logger.info(`Loading (${count}, queued: ${queueLength}): ${url}`);
+          logger.info(`⇓ Loading (scanned: ${count}, crawled: ${this.pages.length + 1}, queued: ${queueLength}): ${url}`);
 
           // Fetch from network
           fetchedFromNetwork = true;
