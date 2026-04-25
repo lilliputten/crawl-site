@@ -1,6 +1,6 @@
 # Crawl-Site
 
-**Version**: 0.0.3  
+**Version**: 0.0.4  
 **Last Updated**: 2026-04-25
 
 A TypeScript-based website crawler and scanner with resume capability. It scans site structure, downloads pages, and saves HTML content while maintaining the original site structure—all in a single self-sufficient process.
@@ -163,6 +163,25 @@ Available arguments:
 - `--log-level=` - Log level (debug/info/warn/error)
 - `--timezone=` - Timezone for date formatting (e.g., 'Europe/Moscow', 'America/New_York')
 - `--top-report-pages-count=` - Number of top/least linked pages in report (default: 50)
+
+### New Features in v0.0.4
+
+#### Page Title Management
+
+Efficient storage and restoration of page titles:
+
+- **Separate title storage**: Page titles stored in `page-title.yaml` as `{ url: title }` format
+- **Minimal state files**: `completed.yaml` contains only plain URLs, reducing file size
+- **Automatic title restoration**: Titles automatically restored when resuming crawls from saved state
+- **No re-crawling needed**: Previously crawled pages retain their titles without needing to re-fetch
+
+#### Optimized Sitemap Structure
+
+Cleaner hierarchical sitemap output:
+
+- **No empty children arrays**: Leaf nodes omit the `children` property entirely
+- **Reduced file size**: Eliminates redundant `children: []` entries from `sitemap-structure.yaml`
+- **Improved readability**: Makes the hierarchical structure easier to read and understand
 
 ### New Features in v0.0.3
 

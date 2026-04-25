@@ -41,6 +41,7 @@ export class StateManager {
       jsLinks: new Set(),
       nonHtmlLinks: new Set(),
       linkRelations: [],
+      pageTitles: new Map(),
       lastProcessed: new Date(),
       crawledPages: [],
       redirectedPages: [],
@@ -211,12 +212,40 @@ export class StateManager {
       try {
         const completedData = await readYamlFile<any>(completedPath);
         if (completedData && Array.isArray(completedData)) {
-          // Convert array of PageData to Map
-          this.state.completed = new Map(completedData.map((page: PageData) => [page.url, page]));
+          // Convert array of URL strings to Map with minimal PageData
+          this.state.completed = new Map(
+            completedData.map((url: string) => [url, { url, title: '' } as PageData])
+          );
           logger.info(`Loaded ${this.state.completed.size} completed pages from completed.yaml`);
         }
       } catch (error) {
         logger.warn('Failed to load completed.yaml:', error);
+      }
+    }
+
+    // Load page titles from page-titles.yaml (if exists) and merge with completed pages
+    const pageTitlesPath = path.join(this.stateDir, 'page-titles.yaml');
+    if (fileExists(pageTitlesPath)) {
+      try {
+        const pageTitlesData = await readYamlFile<any>(pageTitlesPath);
+        if (pageTitlesData && typeof pageTitlesData === 'object') {
+          // Convert object { url: title } to Map
+          this.state.pageTitles = new Map(Object.entries(pageTitlesData));
+
+          // Restore titles for completed pages
+          this.state.pageTitles.forEach((title, url) => {
+            if (this.state.completed.has(url)) {
+              const pageData = this.state.completed.get(url);
+              if (pageData) {
+                pageData.title = title;
+              }
+            }
+          });
+
+          logger.info(`Loaded ${this.state.pageTitles.size} page titles from page-titles.yaml`);
+        }
+      } catch (error) {
+        logger.warn('Failed to load page-titles.yaml:', error);
       }
     }
 
@@ -280,13 +309,28 @@ export class StateManager {
         logger.debug(`Queued URLs saved to ${queuedPath} (${this.state.queued.length} URLs)`);
       }
 
-      // Save completed pages to completed.yaml
+      // Save completed pages to completed.yaml (only URLs, not full PageData objects)
       if (this.state.completed.size > 0) {
         const completedPath = path.join(this.stateDir, 'completed.yaml');
-        const completedData = Array.from(this.state.completed.values());
-        await writeYamlFile(completedPath, completedData);
+        // Extract only URLs from the Map values
+        const completedUrls = Array.from(this.state.completed.keys()).sort();
+        await writeYamlFile(completedPath, completedUrls);
         logger.debug(
-          `Completed pages saved to ${completedPath} (${this.state.completed.size} pages)`
+          `Completed pages saved to ${completedPath} (${this.state.completed.size} URLs)`
+        );
+      }
+
+      // Save page titles to page-titles.yaml
+      if (this.state.pageTitles.size > 0) {
+        const pageTitlesPath = path.join(this.stateDir, 'page-titles.yaml');
+        // Convert Map to plain object { url: title }
+        const pageTitlesObj: Record<string, string> = {};
+        this.state.pageTitles.forEach((title, url) => {
+          pageTitlesObj[url] = title;
+        });
+        await writeYamlFile(pageTitlesPath, pageTitlesObj);
+        logger.debug(
+          `Page titles saved to ${pageTitlesPath} (${this.state.pageTitles.size} titles)`
         );
       }
 
@@ -311,7 +355,7 @@ export class StateManager {
         lastProcessed: updateLastProcessed
           ? new Date().toISOString()
           : this.state.lastProcessed.toISOString(),
-        scanStartTime: this.state.scanStartTime,
+        scanStartTime: this.state.scanStartTime?.toISOString(),
         totalPagesScanned: this.state.completed.size,
         totalQueued: this.state.queued.length,
         totalFailed: this.state.failed.size,
@@ -367,11 +411,18 @@ export class StateManager {
   }
 
   /**
-   * Mark URL as completed
+   * Mark URL as completed (store only minimal PageData with URL)
    */
   markCompleted(url: string, pageData: PageData): void {
     this.removeFromQueue(url);
-    this.state.completed.set(url, pageData);
+    // Store only URL to keep state minimal
+    this.state.completed.set(url, { url, title: '' } as PageData);
+
+    // Save page title if available
+    if (pageData.title) {
+      this.state.pageTitles.set(url, pageData.title);
+    }
+
     this.state.lastProcessed = new Date();
   }
 
@@ -498,10 +549,10 @@ export class StateManager {
   }
 
   /**
-   * Get all completed page data
+   * Get all completed page URLs (plain strings)
    */
-  getCompletedPages(): PageData[] {
-    return Array.from(this.state.completed.values());
+  getCompletedPages(): string[] {
+    return Array.from(this.state.completed.keys());
   }
 
   /**
@@ -517,6 +568,7 @@ export class StateManager {
       jsLinks: new Set(),
       nonHtmlLinks: new Set(),
       linkRelations: [],
+      pageTitles: new Map(),
       lastProcessed: new Date(),
       crawledPages: [],
       redirectedPages: [],
@@ -536,9 +588,14 @@ export class StateManager {
     crawledPages: string[];
     redirectedPages?: RedirectedPage[];
   }): void {
-    // Update completed pages
+    // Update completed pages (store only minimal PageData with URL)
     data.pages.forEach((page) => {
-      this.state.completed.set(page.url, page);
+      this.state.completed.set(page.url, { url: page.url, title: '' } as PageData);
+
+      // Save page title if available
+      if (page.title) {
+        this.state.pageTitles.set(page.url, page.title);
+      }
     });
 
     // Update broken links
@@ -763,6 +820,28 @@ export class StateManager {
       );
     } else {
       logger.info('No redirected pages to save');
+    }
+  }
+
+  /**
+   * Get page title for a URL
+   */
+  getPageTitle(url: string): string | undefined {
+    return this.state.pageTitles.get(url);
+  }
+
+  /**
+   * Save page title
+   */
+  setPageTitle(url: string, title: string): void {
+    this.state.pageTitles.set(url, title);
+
+    // Also update the completed page if it exists
+    if (this.state.completed.has(url)) {
+      const pageData = this.state.completed.get(url);
+      if (pageData) {
+        pageData.title = title;
+      }
     }
   }
 }

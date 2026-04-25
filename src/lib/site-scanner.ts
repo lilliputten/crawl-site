@@ -116,9 +116,11 @@ export class SiteScanner {
 
     // Load crawled pages from completed pages in state
     const completedPages = this.stateManager.getCompletedPages();
-    completedPages.forEach((page) => {
-      this.crawledPages.add(page.url);
-      this.pages.push(page);
+    completedPages.forEach((url) => {
+      this.crawledPages.add(url);
+      // Restore title from page-titles.yaml if available
+      const title = this.stateManager.getPageTitle(url) || '';
+      this.pages.push({ url, title });
     });
 
     // Load redirected pages from state
@@ -301,7 +303,7 @@ export class SiteScanner {
       nonHtmlLinksCount: this.nonHtmlLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
-      scanStartTime: scanStartTime || undefined,
+      scanStartTime: scanStartTime?.toISOString(),
     };
     await writeYamlFile(crawlStatePath, crawlState);
     logger.debug(`Crawl state metadata saved`);
@@ -380,9 +382,7 @@ export class SiteScanner {
     if (this.jsLinks.size > 0) {
       const jsLinksPath = path.join(this.config.stateDir, 'js-links.yaml');
       await writeYamlFile(jsLinksPath, Array.from(this.jsLinks).sort());
-      logger.info(
-        `JavaScript links saved to ${jsLinksPath} (${this.jsLinks.size} links)`
-      );
+      logger.info(`JavaScript links saved to ${jsLinksPath} (${this.jsLinks.size} links)`);
     }
   }
 
@@ -393,9 +393,7 @@ export class SiteScanner {
     if (this.nonHtmlLinks.size > 0) {
       const nonHtmlLinksPath = path.join(this.config.stateDir, 'non-html-links.yaml');
       await writeYamlFile(nonHtmlLinksPath, Array.from(this.nonHtmlLinks).sort());
-      logger.info(
-        `Non-HTML links saved to ${nonHtmlLinksPath} (${this.nonHtmlLinks.size} links)`
-      );
+      logger.info(`Non-HTML links saved to ${nonHtmlLinksPath} (${this.nonHtmlLinks.size} links)`);
     }
   }
 
@@ -458,13 +456,13 @@ export class SiteScanner {
       // Prevent infinite recursion from circular links by checking current path
       if (currentPath.has(url)) {
         // console.log('[site-scanner:buildNode] CIRCULAR DETECTED:', url);
-        return { url, circular: true, children: [] };
+        return { url, circular: true };
       }
 
       // Limit depth to prevent excessively deep structures (reduced from 10 to 5)
       if (depth > 5) {
         // console.log('[site-scanner:buildNode] DEPTH LIMIT REACHED:', url, 'at depth', depth);
-        return { url, truncated: true, children: [] };
+        return { url, truncated: true };
       }
 
       // Add current URL to the path
@@ -476,10 +474,15 @@ export class SiteScanner {
         .map((childUrl) => buildNode(childUrl, depth + 1))
         .sort((a, b) => a.url.localeCompare(b.url));
 
-      return {
-        url,
-        children: childNodes,
-      };
+      // Only include children property if there are actual children
+      if (childNodes.length > 0) {
+        return {
+          url,
+          children: childNodes,
+        };
+      } else {
+        return { url };
+      }
     };
 
     // Start building from homepage
@@ -855,12 +858,12 @@ export class SiteScanner {
           }
 
           html = response.data;
-          
+
           // Apply content transformations if rules are configured
           if (this.config.contentTransformRules && this.config.contentTransformRules.length > 0) {
             html = transformContent(html, this.config.contentTransformRules);
           }
-          
+
           title = extractTitle(html);
 
           // Save page content to crawl-default folder
@@ -877,6 +880,11 @@ export class SiteScanner {
           url: normalized,
           title,
         });
+
+        // Save page title to state manager
+        if (title) {
+          this.stateManager.setPageTitle(normalized, title);
+        }
 
         // Extract links from the page - pass the ORIGINAL url, not normalized
         const { internal, external } = this.extractLinks(html, url);
@@ -991,13 +999,13 @@ export class SiteScanner {
           if (href.startsWith('#') || href.startsWith('tel:') || href.startsWith('mailto:')) {
             return;
           }
-          
+
           // Track javascript: links separately
           if (href.startsWith('javascript:')) {
             this.jsLinks.add(href);
             return;
           }
-          
+
           try {
             // Handle relative URLs - ensure baseUrl ends with / for proper resolution
             // If baseUrl doesn't end with /, add it temporarily for URL resolution
@@ -1505,7 +1513,7 @@ export class SiteScanner {
         reportLines.push('');
         reportLines.push(`Found links to ${externalDomains.size} unique external domains:`);
         reportLines.push('');
-        
+
         // Calculate link counts per domain and sort by count (descending)
         const domainLinkCounts: Array<{ domain: string; count: number }> = [];
         externalDomains.forEach((domain) => {
@@ -1520,7 +1528,7 @@ export class SiteScanner {
           });
           domainLinkCounts.push({ domain, count: domainLinks.length });
         });
-        
+
         // Sort by link count (descending), then alphabetically for ties
         domainLinkCounts.sort((a, b) => {
           if (b.count !== a.count) {
@@ -1528,7 +1536,7 @@ export class SiteScanner {
           }
           return a.domain.localeCompare(b.domain);
         });
-        
+
         domainLinkCounts.forEach(({ domain, count }) => {
           reportLines.push(`- **${domain}** (${count} links)`);
         });

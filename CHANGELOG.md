@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-04-25
+
+### Added
+
+- **Page Title Management**: Efficient storage and restoration of page titles
+  - New `page-title.yaml` file stores URL-to-title mappings in `{ url: title }` format
+  - Separates title data from completion status for better organization
+  - Automatic title restoration when resuming crawls from saved state
+  - Eliminates need to re-crawl pages just to retrieve their titles
+  - Methods: `getPageTitle(url)` and `setPageTitle(url, title)` in StateManager
+
+### Changed
+
+- **Minimal State Storage**: Optimized `completed.yaml` to store only plain URLs
+  - Removed full PageData objects from completed.yaml (now contains only URL strings)
+  - Significantly reduced file size and improved I/O efficiency
+  - Internal Map still uses minimal PageData objects (`{ url, title: '' }`) for type compatibility
+  - No backward compatibility code - clean implementation focused on new format
+- **Sitemap Structure Optimization**: Cleaner hierarchical sitemap output
+  - Removed empty `children: []` arrays from leaf nodes in `sitemap-structure.yaml`
+  - Nodes without children now represented as simple `{ url: "..." }` objects
+  - Reduced file size and improved readability of sitemap structure
+  - Only includes `children` property when actual child pages exist
+
 ## [0.0.3] - 2026-04-25
 
 ### Added

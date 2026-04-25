@@ -80,6 +80,7 @@ export interface CrawlState {
   jsLinks: Set<string>; // JavaScript protocol links (stored in js-links.yaml)
   nonHtmlLinks: Set<string>; // Skipped non-HTML content links (stored in non-html-links.yaml)
   linkRelations: LinkRelation[]; // Track which pages link to which (stored in link-relations.yaml)
+  pageTitles: Map<string, string>; // Page titles stored separately (stored in page-titles.yaml)
   lastProcessed: Date;
   crawledPages: string[]; // URLs of pages that have been successfully crawled and saved (stored in completed.yaml)
   redirectedPages: RedirectedPage[]; // Pages that returned redirect status codes (stored in redirected-pages.yaml)
