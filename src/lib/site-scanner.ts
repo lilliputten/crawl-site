@@ -85,6 +85,9 @@ export class SiteScanner {
   private internalLinks: Set<string> = new Set();
   private brokenLinks: Map<string, BrokenLink> = new Map(); // Track broken links with full metadata (keyed by URL)
   private externalLinks: Set<string> = new Set();
+  private jsLinks: Set<string> = new Set(); // Track javascript: links
+  private nonHtmlLinks: Set<string> = new Set(); // Track skipped non-HTML content links
+  private specialLinks: Set<string> = new Set(); // Track #, tel:, mailto: links
   private linkRelations: Array<{ sourceUrl: string; targetUrl: string; linkText?: string }> = [];
   private crawledPages: Set<string> = new Set(); // Track successfully crawled pages
   private redirectedPages: RedirectedPage[] = []; // Track redirected pages
@@ -107,6 +110,9 @@ export class SiteScanner {
     const brokenLinksFromState = this.stateManager.getBrokenLinks();
     this.brokenLinks = new Map(brokenLinksFromState.map((link) => [link.url, link]));
     this.externalLinks = new Set(this.stateManager.getExternalLinks());
+    this.jsLinks = new Set(this.stateManager.getJsLinks());
+    this.nonHtmlLinks = new Set(this.stateManager.getNonHtmlLinks());
+    this.specialLinks = new Set(this.stateManager.getSpecialLinks());
     this.linkRelations = this.stateManager.getLinkRelations();
 
     // Load crawled pages from completed pages in state
@@ -126,7 +132,7 @@ export class SiteScanner {
     }));
 
     logger.info(
-      `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.linkRelations.length} link relations, ${this.redirectedPages.length} redirected pages`
+      `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.jsLinks.size} js links, ${this.nonHtmlLinks.size} non-HTML links, ${this.specialLinks.size} special links, ${this.linkRelations.length} link relations, ${this.redirectedPages.length} redirected pages`
     );
   }
 
@@ -256,6 +262,15 @@ export class SiteScanner {
     // Save external links
     await this.saveExternalLinksToFile();
 
+    // Save JavaScript links
+    await this.saveJsLinksToFile();
+
+    // Save non-HTML links
+    await this.saveNonHtmlLinksToFile();
+
+    // Save special links
+    await this.saveSpecialLinksToFile();
+
     // Save partial sitemap in YAML format
     if (this.pages.length > 0) {
       const partialSiteMap: SiteMap = {
@@ -286,6 +301,9 @@ export class SiteScanner {
       internalLinksCount: this.internalLinks.size,
       brokenLinksCount: this.brokenLinks.size,
       externalLinksCount: this.externalLinks.size,
+      jsLinksCount: this.jsLinks.size,
+      nonHtmlLinksCount: this.nonHtmlLinks.size,
+      specialLinksCount: this.specialLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
       scanStartTime: scanStartTime || undefined,
@@ -357,6 +375,39 @@ export class SiteScanner {
       logger.info(
         `External links saved to ${externalLinksPath} (${this.externalLinks.size} links)`
       );
+    }
+  }
+
+  /**
+   * Save JavaScript links to js-links.yaml
+   */
+  private async saveJsLinksToFile(): Promise<void> {
+    if (this.jsLinks.size > 0) {
+      const jsLinksPath = path.join(this.config.stateDir, 'js-links.yaml');
+      await writeYamlFile(jsLinksPath, Array.from(this.jsLinks).sort());
+      logger.info(`JavaScript links saved to ${jsLinksPath} (${this.jsLinks.size} links)`);
+    }
+  }
+
+  /**
+   * Save non-HTML links to non-html-links.yaml
+   */
+  private async saveNonHtmlLinksToFile(): Promise<void> {
+    if (this.nonHtmlLinks.size > 0) {
+      const nonHtmlLinksPath = path.join(this.config.stateDir, 'non-html-links.yaml');
+      await writeYamlFile(nonHtmlLinksPath, Array.from(this.nonHtmlLinks).sort());
+      logger.info(`Non-HTML links saved to ${nonHtmlLinksPath} (${this.nonHtmlLinks.size} links)`);
+    }
+  }
+
+  /**
+   * Save special links to special-links.yaml
+   */
+  private async saveSpecialLinksToFile(): Promise<void> {
+    if (this.specialLinks.size > 0) {
+      const specialLinksPath = path.join(this.config.stateDir, 'special-links.yaml');
+      await writeYamlFile(specialLinksPath, Array.from(this.specialLinks).sort());
+      logger.info(`Special links saved to ${specialLinksPath} (${this.specialLinks.size} links)`);
     }
   }
 
@@ -810,6 +861,7 @@ export class SiteScanner {
           const contentType = response.headers['content-type'];
           if (!isHtmlContent(contentType ? String(contentType) : undefined)) {
             logger.debug(`Skipping non-HTML content (${contentType}): ${url}`);
+            this.nonHtmlLinks.add(normalized); // Track skipped non-HTML links
             this.visitedUrls.add(normalized);
             continue; // Skip this URL and move to next
           }
@@ -941,9 +993,18 @@ export class SiteScanner {
       elements.forEach((element) => {
         const href = element.getAttribute('href');
         if (href) {
+          // Track special links (#, tel:, mailto:) separately
           if (href.startsWith('#') || href.startsWith('tel:') || href.startsWith('mailto:')) {
+            this.specialLinks.add(href);
             return;
           }
+
+          // Track javascript: links separately
+          if (href.startsWith('javascript:')) {
+            this.jsLinks.add(href);
+            return;
+          }
+
           try {
             // Handle relative URLs - ensure baseUrl ends with / for proper resolution
             // If baseUrl doesn't end with /, add it temporarily for URL resolution
@@ -1058,6 +1119,9 @@ export class SiteScanner {
       internalLinksCount: this.internalLinks.size,
       brokenLinksCount: this.brokenLinks.size,
       externalLinksCount: this.externalLinks.size,
+      jsLinksCount: this.jsLinks.size,
+      nonHtmlLinksCount: this.nonHtmlLinks.size,
+      specialLinksCount: this.specialLinks.size,
       linkRelationsCount: this.linkRelations.length,
       lastProcessed: new Date().toISOString(),
       scanStartTime: scanStartTime || undefined,
@@ -1084,6 +1148,15 @@ export class SiteScanner {
         `External links saved to ${externalLinksPath} (${this.externalLinks.size} links)`
       );
     }
+
+    // Save JavaScript links
+    await this.saveJsLinksToFile();
+
+    // Save non-HTML links
+    await this.saveNonHtmlLinksToFile();
+
+    // Save special links
+    await this.saveSpecialLinksToFile();
 
     // Save redirected pages
     await this.saveRedirectedPages();
@@ -1280,6 +1353,9 @@ export class SiteScanner {
       const totalInternalLinks = this.internalLinks.size;
       const totalBrokenLinks = this.brokenLinks.size;
       const totalExternalLinks = this.externalLinks.size;
+      const totalJsLinks = this.jsLinks.size;
+      const totalNonHtmlLinks = this.nonHtmlLinks.size;
+      const totalSpecialLinks = this.specialLinks.size;
       const totalRedirectedPages = this.redirectedPages.length;
       const totalLinkRelations = this.linkRelations.length;
 
@@ -1347,6 +1423,15 @@ export class SiteScanner {
       reportLines.push(
         `- **External Links Found**: ${totalExternalLinks} (${externalDomains.size} unique domains)`
       );
+      if (totalJsLinks > 0) {
+        reportLines.push(`- **JavaScript Links**: ${totalJsLinks}`);
+      }
+      if (totalNonHtmlLinks > 0) {
+        reportLines.push(`- **Non-HTML Links**: ${totalNonHtmlLinks}`);
+      }
+      if (totalSpecialLinks > 0) {
+        reportLines.push(`- **Special Links** (#, tel:, mailto:): ${totalSpecialLinks}`);
+      }
       reportLines.push(`- **Broken Links**: ${totalBrokenLinks}`);
       reportLines.push(`- **Redirected Pages**: ${totalRedirectedPages}`);
       reportLines.push(`- **Total Link Relations**: ${totalLinkRelations}`);
@@ -1435,20 +1520,35 @@ export class SiteScanner {
         reportLines.push('');
         reportLines.push(`Found links to ${externalDomains.size} unique external domains:`);
         reportLines.push('');
-        Array.from(externalDomains)
-          .sort()
-          .forEach((domain) => {
-            const domainLinks = Array.from(this.externalLinks).filter((url) => {
-              try {
-                const rawDomain = new URL(url).host;
-                const decodedDomain = decodeDomain(rawDomain);
-                return decodedDomain === domain;
-              } catch {
-                return false;
-              }
-            });
-            reportLines.push(`- **${domain}** (${domainLinks.length} links)`);
+
+        // Calculate link counts per domain and sort by count (descending)
+        const domainLinkCounts: Array<{ domain: string; count: number }> = [];
+        externalDomains.forEach((domain) => {
+          const domainLinks = Array.from(this.externalLinks).filter((url) => {
+            try {
+              const rawDomain = new URL(url).host;
+              const decodedDomain = decodeDomain(rawDomain);
+              return decodedDomain === domain;
+            } catch {
+              return false;
+            }
           });
+          domainLinkCounts.push({ domain, count: domainLinks.length });
+        });
+
+        // Sort by link count (descending), then alphabetically for ties
+        domainLinkCounts.sort((a, b) => {
+          if (b.count !== a.count) {
+            return b.count - a.count;
+          }
+          return a.domain.localeCompare(b.domain);
+        });
+
+        domainLinkCounts.forEach(({ domain, count }) => {
+          const escapedDomain = escapeMarkdownText(domain);
+          const domainUrl = `https://${domain}`;
+          reportLines.push(`- [${escapedDomain}](${domainUrl}) (${count} links)`);
+        });
         reportLines.push('');
       }
 
@@ -1475,6 +1575,15 @@ export class SiteScanner {
       reportLines.push('- `crawl-state.yaml` - Scan state and statistics');
       reportLines.push('- `internal-links.yaml` - All internal links');
       reportLines.push('- `external-links.yaml` - All external links');
+      if (totalJsLinks > 0) {
+        reportLines.push('- `js-links.yaml` - JavaScript protocol links');
+      }
+      if (totalNonHtmlLinks > 0) {
+        reportLines.push('- `non-html-links.yaml` - Skipped non-HTML content links');
+      }
+      if (totalSpecialLinks > 0) {
+        reportLines.push('- `special-links.yaml` - Special links (#, tel:, mailto:)');
+      }
       reportLines.push('- `internal-link-relations.yaml` - Internal link relationships');
       reportLines.push('- `external-link-relations.yaml` - External link relationships');
       if (totalBrokenLinks > 0) {

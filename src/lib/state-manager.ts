@@ -38,6 +38,9 @@ export class StateManager {
       failed: new Map(),
       brokenLinks: [], // Assuming BrokenLink[] type in CrawlState
       externalLinks: new Set(),
+      jsLinks: new Set(),
+      nonHtmlLinks: new Set(),
+      specialLinks: new Set(),
       linkRelations: [],
       lastProcessed: new Date(),
       crawledPages: [],
@@ -84,6 +87,52 @@ export class StateManager {
         }
       } catch (error) {
         logger.warn('Failed to load external-links.yaml:', error);
+      }
+    }
+
+    // Load JavaScript links from js-links.yaml (if exists)
+    const jsLinksPath = path.join(this.stateDir, 'js-links.yaml');
+    if (fileExists(jsLinksPath)) {
+      try {
+        const jsLinksData = await readYamlFile<any>(jsLinksPath);
+        if (jsLinksData && Array.isArray(jsLinksData)) {
+          this.state.jsLinks = new Set(jsLinksData);
+          logger.info(`Loaded ${this.state.jsLinks.size} JavaScript links from js-links.yaml`);
+        }
+      } catch (error) {
+        logger.warn('Failed to load js-links.yaml:', error);
+      }
+    }
+
+    // Load non-HTML links from non-html-links.yaml (if exists)
+    const nonHtmlLinksPath = path.join(this.stateDir, 'non-html-links.yaml');
+    if (fileExists(nonHtmlLinksPath)) {
+      try {
+        const nonHtmlLinksData = await readYamlFile<any>(nonHtmlLinksPath);
+        if (nonHtmlLinksData && Array.isArray(nonHtmlLinksData)) {
+          this.state.nonHtmlLinks = new Set(nonHtmlLinksData);
+          logger.info(
+            `Loaded ${this.state.nonHtmlLinks.size} non-HTML links from non-html-links.yaml`
+          );
+        }
+      } catch (error) {
+        logger.warn('Failed to load non-html-links.yaml:', error);
+      }
+    }
+
+    // Load special links from special-links.yaml (if exists)
+    const specialLinksPath = path.join(this.stateDir, 'special-links.yaml');
+    if (fileExists(specialLinksPath)) {
+      try {
+        const specialLinksData = await readYamlFile<any>(specialLinksPath);
+        if (specialLinksData && Array.isArray(specialLinksData)) {
+          this.state.specialLinks = new Set(specialLinksData);
+          logger.info(
+            `Loaded ${this.state.specialLinks.size} special links from special-links.yaml`
+          );
+        }
+      } catch (error) {
+        logger.warn('Failed to load special-links.yaml:', error);
       }
     }
 
@@ -428,6 +477,27 @@ export class StateManager {
   }
 
   /**
+   * Get all JavaScript links
+   */
+  getJsLinks(): string[] {
+    return Array.from(this.state.jsLinks);
+  }
+
+  /**
+   * Get all non-HTML links
+   */
+  getNonHtmlLinks(): string[] {
+    return Array.from(this.state.nonHtmlLinks);
+  }
+
+  /**
+   * Get all special links (#, tel:, mailto:)
+   */
+  getSpecialLinks(): string[] {
+    return Array.from(this.state.specialLinks);
+  }
+
+  /**
    * Get scan start time (ISO string) if available
    */
   getScanStartTime(): Date | undefined {
@@ -468,6 +538,9 @@ export class StateManager {
       failed: new Map(),
       brokenLinks: [],
       externalLinks: new Set(),
+      jsLinks: new Set(),
+      nonHtmlLinks: new Set(),
+      specialLinks: new Set(),
       linkRelations: [],
       lastProcessed: new Date(),
       crawledPages: [],
