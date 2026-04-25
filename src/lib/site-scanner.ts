@@ -727,7 +727,7 @@ export class SiteScanner {
             timeout: this.config.requestTimeout,
             headers,
             maxRedirects: 0, // Don't follow redirects
-            validateStatus: (status) => status < 500, // Accept all status codes < 500 as valid
+            validateStatus: (status) => status < 600, // Accept all status codes to handle them manually
           });
 
           // Check for redirect status codes (3xx)
@@ -782,6 +782,33 @@ export class SiteScanner {
             }
 
             // Skip further processing - don't save content or extract links
+            continue;
+          }
+
+          // Check for error status codes (4xx and 5xx)
+          if (response.status >= 400) {
+            logger.error(`✗ HTTP ${response.status} error for ${url}, marking as broken link`);
+
+            // Add to broken links
+            this.brokenLinks.add(normalized);
+
+            // Track the HTTP status code
+            this.brokenLinkStatuses.set(normalized, response.status);
+
+            // Mark that we have changes to save
+            this.hasChangesSinceLastSave = true;
+
+            // Save broken links immediately
+            await this.saveBrokenLinks(true);
+
+            // Record error for delay management
+            this.delayManager.recordError();
+            await this.delayManager.wait();
+
+            // Mark as visited so we don't retry
+            this.visitedUrls.add(normalized);
+
+            // Skip further processing
             continue;
           }
 
