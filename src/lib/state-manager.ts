@@ -71,6 +71,112 @@ export class StateManager {
       }
     }
 
+    // Load external links from external-links.yaml (if exists)
+    const externalLinksPath = path.join(this.stateDir, 'external-links.yaml');
+    if (fileExists(externalLinksPath)) {
+      try {
+        const externalLinksData = await readYamlFile<any>(externalLinksPath);
+        if (externalLinksData && Array.isArray(externalLinksData)) {
+          this.state.externalLinks = new Set(externalLinksData);
+          logger.info(
+            `Loaded ${this.state.externalLinks.size} external links from external-links.yaml`
+          );
+        }
+      } catch (error) {
+        logger.warn('Failed to load external-links.yaml:', error);
+      }
+    }
+
+    // Load internal links from internal-links.yaml (if exists)
+    const internalLinksPath = path.join(this.stateDir, 'internal-links.yaml');
+    if (fileExists(internalLinksPath)) {
+      try {
+        const internalLinksData = await readYamlFile<any>(internalLinksPath);
+        if (internalLinksData && Array.isArray(internalLinksData)) {
+          // Store internal links in a temporary field since CrawlState doesn't have internalLinks array
+          // We'll use brokenLinks array structure as a reference, but we need to track this differently
+          // For now, we'll just log that we found them
+          logger.info(
+            `Found ${internalLinksData.length} internal links in internal-links.yaml (not loaded into state)`
+          );
+        }
+      } catch (error) {
+        logger.warn('Failed to load internal-links.yaml:', error);
+      }
+    }
+
+    // Load redirected pages from redirected-pages.yaml (if exists)
+    const redirectedPagesPath = path.join(this.stateDir, 'redirected-pages.yaml');
+    if (fileExists(redirectedPagesPath)) {
+      try {
+        const redirectedPagesData = await readYamlFile<any>(redirectedPagesPath);
+        if (redirectedPagesData && Array.isArray(redirectedPagesData)) {
+          this.state.redirectedPages = redirectedPagesData.map((p: any) => ({
+            url: p.url,
+            statusCode: p.statusCode,
+            redirectUrl: p.redirectUrl,
+            timestamp: new Date(p.timestamp),
+          }));
+          logger.info(
+            `Loaded ${this.state.redirectedPages.length} redirected pages from redirected-pages.yaml`
+          );
+        }
+      } catch (error) {
+        logger.warn('Failed to load redirected-pages.yaml:', error);
+      }
+    }
+
+    // Load link relations from internal-link-relations.yaml and external-link-relations.yaml (if exist)
+    const internalRelationsPath = path.join(this.stateDir, 'internal-link-relations.yaml');
+    const externalRelationsPath = path.join(this.stateDir, 'external-link-relations.yaml');
+    
+    if (fileExists(internalRelationsPath) || fileExists(externalRelationsPath)) {
+      try {
+        const linkRelations: LinkRelation[] = [];
+
+        // Load internal link relations
+        if (fileExists(internalRelationsPath)) {
+          const internalData = await readYamlFile<any>(internalRelationsPath);
+          if (internalData && typeof internalData === 'object') {
+            Object.entries(internalData).forEach(([targetUrl, sourceUrls]: [string, any]) => {
+              if (Array.isArray(sourceUrls)) {
+                sourceUrls.forEach((sourceUrl: string) => {
+                  linkRelations.push({
+                    sourceUrl,
+                    targetUrl,
+                  });
+                });
+              }
+            });
+          }
+        }
+
+        // Load external link relations
+        if (fileExists(externalRelationsPath)) {
+          const externalData = await readYamlFile<any>(externalRelationsPath);
+          if (externalData && typeof externalData === 'object') {
+            Object.entries(externalData).forEach(([targetUrl, sourceUrls]: [string, any]) => {
+              if (Array.isArray(sourceUrls)) {
+                sourceUrls.forEach((sourceUrl: string) => {
+                  linkRelations.push({
+                    sourceUrl,
+                    targetUrl,
+                  });
+                });
+              }
+            });
+          }
+        }
+
+        this.state.linkRelations = linkRelations;
+        logger.info(
+          `Loaded ${this.state.linkRelations.length} link relations from link relation files`
+        );
+      } catch (error) {
+        logger.warn('Failed to load link relations YAML files:', error);
+      }
+    }
+
     if (fileExists(this.stateFile)) {
       try {
         const data = await readYamlFile<any>(this.stateFile);
@@ -80,24 +186,43 @@ export class StateManager {
           return;
         }
 
-        // Convert arrays back to Maps and Sets
-        this.state = {
-          queued: data.queued || [],
-          completed: new Map(data.completed || []),
-          failed: new Map(data.failed || []),
-          // Keep broken links loaded from broken-links.yaml, or fall back to state file
-          brokenLinks:
-            this.state.brokenLinks.length > 0 ? this.state.brokenLinks : data.brokenLinks || [],
-          externalLinks: new Set(data.externalLinks || []),
-          linkRelations: data.linkRelations || [],
-          lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),
-          crawledPages: data.crawledPages || [],
-          redirectedPages: data.redirectedPages || [],
-        };
+        // Check if this is a summary-only file (new format) or full state file (old format)
+        const isSummaryOnly = data.totalPagesScanned !== undefined && data.queued === undefined;
+        
+        if (isSummaryOnly) {
+          // This is a summary-only file, don't overwrite the state loaded from separate YAML files
+          // Just update lastProcessed and scanStartTime if available
+          if (data.lastProcessed) {
+            this.state.lastProcessed = new Date(data.lastProcessed);
+          }
+          if (data.scanStartTime) {
+            this.state.scanStartTime = data.scanStartTime;
+          }
+          logger.info(
+            `Loaded summary from crawl-state.yaml (actual data loaded from separate YAML files)`
+          );
+        } else {
+          // This is a full state file with arrays and maps
+          // Convert arrays back to Maps and Sets
+          this.state = {
+            queued: data.queued || [],
+            completed: new Map(data.completed || []),
+            failed: new Map(data.failed || []),
+            // Keep broken links loaded from broken-links.yaml, or fall back to state file
+            brokenLinks:
+              this.state.brokenLinks.length > 0 ? this.state.brokenLinks : data.brokenLinks || [],
+            externalLinks: this.state.externalLinks.size > 0 ? this.state.externalLinks : new Set(data.externalLinks || []),
+            linkRelations: this.state.linkRelations.length > 0 ? this.state.linkRelations : (data.linkRelations || []),
+            lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),
+            crawledPages: data.crawledPages || [],
+            redirectedPages: this.state.redirectedPages.length > 0 ? this.state.redirectedPages : (data.redirectedPages || []),
+            scanStartTime: data.scanStartTime || this.state.scanStartTime,
+          };
 
-        logger.info(
-          `Loaded existing state: ${this.state.completed.size} completed, ${this.state.failed.size} failed, ${this.state.queued.length} queued`
-        );
+          logger.info(
+            `Loaded existing state: ${this.state.completed.size} completed, ${this.state.failed.size} failed, ${this.state.queued.length} queued`
+          );
+        }
       } catch (error) {
         logger.warn('Failed to load state file, starting fresh:', error);
       }
@@ -108,8 +233,9 @@ export class StateManager {
 
   /**
    * Save current state to disk
+   * @param updateLastProcessed - Whether to update the lastProcessed timestamp (default: true)
    */
-  async saveState(): Promise<void> {
+  async saveState(updateLastProcessed: boolean = true): Promise<void> {
     try {
       // Convert Maps and Sets to arrays for serialization
       const data = {
@@ -119,11 +245,12 @@ export class StateManager {
         brokenLinks: this.state.brokenLinks,
         externalLinks: Array.from(this.state.externalLinks),
         linkRelations: this.state.linkRelations,
-        lastProcessed: this.state.lastProcessed.toISOString(),
+        lastProcessed: updateLastProcessed ? new Date().toISOString() : this.state.lastProcessed.toISOString(),
         redirectedPages: this.state.redirectedPages.map((p) => ({
           ...p,
           timestamp: p.timestamp.toISOString(),
         })),
+        scanStartTime: this.state.scanStartTime,
       };
 
       await writeYamlFile(this.stateFile, data);
@@ -288,6 +415,7 @@ export class StateManager {
     linkRelations: LinkRelation[];
     crawledPages: string[];
     redirectedPages?: RedirectedPage[];
+    scanStartTime?: string;
   }): void {
     // Update completed pages
     data.pages.forEach((page) => {
@@ -315,6 +443,11 @@ export class StateManager {
           [...this.state.redirectedPages, ...data.redirectedPages].map((p) => [p.url, p])
         ).values(),
       ];
+    }
+
+    // Update scan start time if provided
+    if (data.scanStartTime) {
+      this.state.scanStartTime = data.scanStartTime;
     }
 
     // Update last processed time

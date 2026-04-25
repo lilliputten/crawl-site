@@ -48,6 +48,7 @@
     "start": "pnpm scan",
     "start-build": "pnpm build && pnpm scan-build",
     "dev": "tsx watch src/scripts/scan.ts",
+    "report": "tsx src/scripts/report.ts",
     "lint": "oxlint src",
     "lint-fix": "oxlint src --fix",
     "check-types": "tsc --pretty --noEmit",

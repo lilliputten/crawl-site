@@ -61,6 +61,21 @@ function buildMinimalHeaders(userAgent: string): Record<string, string> {
   };
 }
 
+/**
+ * Escape special characters in URLs for use in markdown link text
+ * Markdown treats underscores, asterisks, and brackets as formatting symbols
+ * This function escapes them to prevent unintended formatting
+ */
+function escapeMarkdownText(text: string): string {
+  // Only escape characters that have special meaning in markdown link text
+  return text
+    .replace(/_/g, '\\_')      // Underscore (italic/bold)
+    .replace(/\*/g, '\\*')      // Asterisk (bold/italic)
+    .replace(/\[/g, '\\[')      // Opening bracket (links)
+    .replace(/\]/g, '\\]')      // Closing bracket (links)
+    .replace(/`/g, '\\`');      // Backtick (inline code)
+}
+
 export class SiteScanner {
   private config: CrawlConfig;
   private delayManager: DelayManager;
@@ -571,6 +586,7 @@ export class SiteScanner {
         redirectUrl: p.redirectUrl,
         timestamp: new Date(),
       })),
+      scanStartTime: this.scanStartTime.toISOString(),
     });
 
     // Save state to disk
@@ -727,7 +743,7 @@ export class SiteScanner {
             timeout: this.config.requestTimeout,
             headers,
             maxRedirects: 0, // Don't follow redirects
-            validateStatus: (status) => status < 600, // Accept all status codes to handle them manually
+            validateStatus: (status) => status < 500, // Accept all status codes < 500 as valid
           });
 
           // Check for redirect status codes (3xx)
@@ -1275,6 +1291,21 @@ export class SiteScanner {
       const scanStartedStr = this.formatDateWithTimezone(this.scanStartTime);
       const scanFinishedStr = this.formatDateWithTimezone(scanFinished);
 
+      // Calculate time elapsed
+      const elapsedMs = scanFinished.getTime() - this.scanStartTime.getTime();
+      const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
+      const elapsedMinutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+      const elapsedSeconds = Math.floor((elapsedMs % (1000 * 60)) / 1000);
+      
+      let timeElapsedStr = '';
+      if (elapsedHours > 0) {
+        timeElapsedStr = `${elapsedHours}h ${elapsedMinutes}m ${elapsedSeconds}s`;
+      } else if (elapsedMinutes > 0) {
+        timeElapsedStr = `${elapsedMinutes}m ${elapsedSeconds}s`;
+      } else {
+        timeElapsedStr = `${elapsedSeconds}s`;
+      }
+
       // Calculate statistics
       const totalPagesScanned = this.pages.length;
       const totalCrawledPages = this.crawledPages.size;
@@ -1326,10 +1357,11 @@ export class SiteScanner {
 
       reportLines.push(`# Site Scan Report`);
       reportLines.push('');
-      reportLines.push(`**Site URL**: ${this.config.siteUrl}`);
-      reportLines.push(`**Scan Started**: ${scanStartedStr}`);
-      reportLines.push(`**Scan Finished**: ${scanFinishedStr}`);
-      reportLines.push(`**Domain**: ${siteDomain}`);
+      reportLines.push(`- **Site URL**: ${this.config.siteUrl}`);
+      reportLines.push(`- **Scan Started**: ${scanStartedStr}`);
+      reportLines.push(`- **Scan Finished**: ${scanFinishedStr}`);
+      reportLines.push(`- **Time Elapsed**: ${timeElapsedStr}`);
+      reportLines.push(`- **Domain**: ${siteDomain}`);
       reportLines.push('');
       reportLines.push('---');
       reportLines.push('');
@@ -1358,10 +1390,11 @@ export class SiteScanner {
           .sort()
           .forEach((url) => {
             const statusCode = this.brokenLinkStatuses.get(url);
+            const escapedUrl = escapeMarkdownText(url);
             if (statusCode) {
-              reportLines.push(`- **${url}** (HTTP ${statusCode})`);
+              reportLines.push(`- [${escapedUrl}](${url}) (HTTP ${statusCode})`);
             } else {
-              reportLines.push(`- ${url}`);
+              reportLines.push(`- [${escapedUrl}](${url})`);
             }
           });
         reportLines.push('');
@@ -1383,7 +1416,9 @@ export class SiteScanner {
             this.redirectedPages
               .filter((page) => page.statusCode === Number(code))
               .forEach((page) => {
-                reportLines.push(`- **${page.url}** → ${page.redirectUrl}`);
+                const escapedUrl = escapeMarkdownText(page.url);
+                const escapedRedirectUrl = escapeMarkdownText(page.redirectUrl);
+                reportLines.push(`- [${escapedUrl}](${page.url}) → [${escapedRedirectUrl}](${page.redirectUrl})`);
               });
             reportLines.push('');
           });
