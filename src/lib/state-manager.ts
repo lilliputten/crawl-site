@@ -1,7 +1,7 @@
 // src/lib/state-manager.ts
 
 import * as path from 'path';
-import { CrawlConfig, CrawlState, PageData, LinkRelation } from '@/types';
+import { CrawlConfig, CrawlState, PageData, LinkRelation, RedirectedPage } from '@/types';
 import { ensureDir, fileExists, readYamlFile, writeYamlFile } from './file-utils';
 import { Logger } from './logger';
 // import { formatError } from './error-formatter'; // TODO: Add error formatting utility if needed
@@ -26,7 +26,7 @@ export class StateManager {
     this.stateDir = config.stateDir;
     this.stateFile = path.join(this.stateDir, 'crawl-state.yaml');
     this.state = {
-      // All the state data: queued, completed, failed, brokenLinks, externalLinks, linkRelations, lastProcessed, crawledPages
+      // All the state data: queued, completed, failed, brokenLinks, externalLinks, linkRelations, lastProcessed, crawledPages, redirectedPages
       queued: [],
       completed: new Map(),
       failed: new Map(),
@@ -35,6 +35,7 @@ export class StateManager {
       linkRelations: [],
       lastProcessed: new Date(),
       crawledPages: [],
+      redirectedPages: [],
     };
   }
 
@@ -81,6 +82,7 @@ export class StateManager {
           linkRelations: data.linkRelations || [],
           lastProcessed: data.lastProcessed ? new Date(data.lastProcessed) : new Date(),
           crawledPages: data.crawledPages || [],
+          redirectedPages: data.redirectedPages || [],
         };
 
         logger.info(
@@ -108,6 +110,10 @@ export class StateManager {
         externalLinks: Array.from(this.state.externalLinks),
         linkRelations: this.state.linkRelations,
         lastProcessed: this.state.lastProcessed.toISOString(),
+        redirectedPages: this.state.redirectedPages.map((p) => ({
+          ...p,
+          timestamp: p.timestamp.toISOString(),
+        })),
       };
 
       await writeYamlFile(this.stateFile, data);
@@ -249,6 +255,7 @@ export class StateManager {
       linkRelations: [],
       lastProcessed: new Date(),
       crawledPages: [],
+      redirectedPages: [],
     };
     await this.saveState();
     logger.info('State cleared');
@@ -263,6 +270,7 @@ export class StateManager {
     externalLinks: string[];
     linkRelations: LinkRelation[];
     crawledPages: string[];
+    redirectedPages?: RedirectedPage[];
   }): void {
     // Update completed pages
     data.pages.forEach((page) => {
@@ -283,11 +291,20 @@ export class StateManager {
     // Update crawled pages
     this.state.crawledPages = [...new Set([...this.state.crawledPages, ...data.crawledPages])];
 
+    // Update redirected pages
+    if (data.redirectedPages && data.redirectedPages.length > 0) {
+      this.state.redirectedPages = [
+        ...new Map(
+          [...this.state.redirectedPages, ...data.redirectedPages].map((p) => [p.url, p])
+        ).values(),
+      ];
+    }
+
     // Update last processed time
     this.state.lastProcessed = new Date();
 
     logger.info(
-      `State updated from scanner: ${data.pages.length} pages, ${data.brokenLinks.length} broken links, ${data.externalLinks.length} external links, ${data.linkRelations.length} relations`
+      `State updated from scanner: ${data.pages.length} pages, ${data.brokenLinks.length} broken links, ${data.externalLinks.length} external links, ${data.linkRelations.length} relations${data.redirectedPages ? `, ${data.redirectedPages.length} redirects` : ''}`
     );
   }
 
@@ -429,6 +446,54 @@ export class StateManager {
       );
     } else {
       logger.info('No broken links to save');
+    }
+  }
+
+  /**
+   * Add a redirected page
+   */
+  addRedirectedPage(url: string, statusCode: number, redirectUrl: string): void {
+    const redirectedPage: RedirectedPage = {
+      url,
+      statusCode,
+      redirectUrl,
+      timestamp: new Date(),
+    };
+
+    // Check if already exists and update if needed
+    const existingIndex = this.state.redirectedPages.findIndex((p) => p.url === url);
+    if (existingIndex !== -1) {
+      this.state.redirectedPages[existingIndex] = redirectedPage;
+    } else {
+      this.state.redirectedPages.push(redirectedPage);
+    }
+
+    logger.info(`Redirect detected: ${url} -> ${redirectUrl} (${statusCode})`);
+  }
+
+  /**
+   * Get all redirected pages
+   */
+  getRedirectedPages(): RedirectedPage[] {
+    return [...this.state.redirectedPages];
+  }
+
+  /**
+   * Save redirected pages to a separate file
+   */
+  async saveRedirectedPages(): Promise<void> {
+    if (this.state.redirectedPages.length > 0) {
+      const redirectedPagesPath = path.join(this.stateDir, 'redirected-pages.yaml');
+      const data = this.state.redirectedPages.map((p) => ({
+        ...p,
+        timestamp: p.timestamp.toISOString(),
+      }));
+      await writeYamlFile(redirectedPagesPath, data);
+      logger.info(
+        `Redirected pages saved to ${redirectedPagesPath} (${this.state.redirectedPages.length} pages)`
+      );
+    } else {
+      logger.info('No redirected pages to save');
     }
   }
 }

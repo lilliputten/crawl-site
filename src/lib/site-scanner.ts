@@ -71,12 +71,14 @@ export class SiteScanner {
   private externalLinks: Set<string> = new Set();
   private linkRelations: Array<{ sourceUrl: string; targetUrl: string; linkText?: string }> = [];
   private crawledPages: Set<string> = new Set(); // Track successfully crawled pages
+  private redirectedPages: Array<{ url: string; statusCode: number; redirectUrl: string }> = []; // Track redirected pages
   private retryCounts: Map<string, number> = new Map(); // Track retry attempts per URL
   private excludedUrlsCount: number = 0; // Track excluded URLs count
 
   // Track changes since last save
   private lastSavedPageCount: number = 0;
   private lastSavedBrokenLinkCount: number = 0;
+  private lastSavedRedirectedPageCount: number = 0;
   private hasChangesSinceLastSave: boolean = false;
 
   constructor(config: CrawlConfig, delayManager: DelayManager, stateManager: StateManager) {
@@ -96,9 +98,46 @@ export class SiteScanner {
       this.pages.push(page);
     });
 
+    // Load redirected pages from state
+    const savedRedirectedPages = this.stateManager.getRedirectedPages();
+    this.redirectedPages = savedRedirectedPages.map((p) => ({
+      url: p.url,
+      statusCode: p.statusCode,
+      redirectUrl: p.redirectUrl,
+    }));
+
     logger.info(
-      `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.linkRelations.length} link relations`
+      `Loaded state: ${this.crawledPages.size} crawled pages, ${this.brokenLinks.size} broken links, ${this.externalLinks.size} external links, ${this.linkRelations.length} link relations, ${this.redirectedPages.length} redirected pages`
     );
+  }
+
+  /**
+   * Decode URL-encoded characters in href/src attributes within HTML content
+   */
+  private decodeHtmlUrls(html: string): string {
+    try {
+      // Match href and src attributes with URL-encoded values
+      const urlPattern = /(href|src)\s*=\s*["']([^"']*?)["']/g;
+
+      return html.replace(urlPattern, (match, attr, url) => {
+        // Only decode if the URL contains percent-encoded characters
+        if (url.includes('%')) {
+          try {
+            const decodedUrl = decodeUrl(url);
+            return `${attr}="${decodedUrl}"`;
+          } catch {
+            // If decoding fails, keep original
+            return match;
+          }
+        }
+        return match;
+      });
+    } catch (error) {
+      logger.warn(
+        `Failed to decode URLs in HTML: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return html; // Return original HTML if decoding fails
+    }
   }
 
   /**
@@ -106,13 +145,16 @@ export class SiteScanner {
    */
   private async savePageContent(url: string, html: string): Promise<void> {
     try {
+      // Decode URL-encoded characters in href/src attributes
+      const decodedHtml = this.decodeHtmlUrls(html);
+
       // Create file path from URL, preserving directory structure
       const filePath = urlToFilePath(url, this.config.siteUrl, this.config.dest);
 
       // Ensure directory exists and save HTML file
       const dir = path.dirname(filePath);
       await ensureDir(dir);
-      await fs.promises.writeFile(filePath, html, 'utf-8');
+      await fs.promises.writeFile(filePath, decodedHtml, 'utf-8');
 
       this.crawledPages.add(url);
       logger.debug(`Saved content for: ${url} -> ${filePath}`);
@@ -149,12 +191,14 @@ export class SiteScanner {
     // Only save if there are actual changes
     const currentPageCount = this.pages.length;
     const currentBrokenLinkCount = this.brokenLinks.size;
+    const currentRedirectedPageCount = this.redirectedPages.length;
 
     const hasNewPages = currentPageCount > this.lastSavedPageCount;
     const hasNewBrokenLinks = currentBrokenLinkCount > this.lastSavedBrokenLinkCount;
+    const hasNewRedirectedPages = currentRedirectedPageCount > this.lastSavedRedirectedPageCount;
 
-    if (!hasNewPages && !hasNewBrokenLinks) {
-      logger.debug('No new pages or broken links found, skipping save');
+    if (!hasNewPages && !hasNewBrokenLinks && !hasNewRedirectedPages) {
+      logger.debug('No new pages, broken links, or redirects found, skipping save');
       return;
     }
 
@@ -162,6 +206,12 @@ export class SiteScanner {
 
     // Update broken links by removing successfully crawled pages
     this.updateBrokenLinks();
+
+    // Save broken links
+    await this.saveBrokenLinks(true);
+
+    // Save redirected pages
+    await this.saveRedirectedPages();
 
     // Save partial sitemap in YAML format
     if (this.pages.length > 0) {
@@ -299,7 +349,21 @@ export class SiteScanner {
     // Update tracking variables after successful save
     this.lastSavedPageCount = this.pages.length;
     this.lastSavedBrokenLinkCount = this.brokenLinks.size;
+    this.lastSavedRedirectedPageCount = this.redirectedPages.length;
     this.hasChangesSinceLastSave = false;
+  }
+
+  /**
+   * Save redirected pages to file
+   */
+  private async saveRedirectedPages(): Promise<void> {
+    if (this.redirectedPages.length > 0) {
+      const redirectedPagesPath = path.join(this.config.stateDir, 'redirected-pages.yaml');
+      await writeYamlFile(redirectedPagesPath, this.redirectedPages);
+      logger.info(
+        `Redirected pages saved to ${redirectedPagesPath} (${this.redirectedPages.length} pages)`
+      );
+    }
   }
 
   /**
@@ -479,6 +543,7 @@ export class SiteScanner {
       `Links summary: ${this.internalLinks.size} internal, ${this.brokenLinks.size} broken, ${this.externalLinks.size} external`
     );
     logger.info(`Excluded URLs: ${this.excludedUrlsCount}`);
+    logger.info(`Redirected pages: ${this.redirectedPages.length}`);
 
     // Update StateManager with all scanner data
     this.stateManager.updateFromScanner({
@@ -487,12 +552,19 @@ export class SiteScanner {
       externalLinks: Array.from(this.externalLinks),
       linkRelations: this.linkRelations,
       crawledPages: Array.from(this.crawledPages),
+      redirectedPages: this.redirectedPages.map((p) => ({
+        url: p.url,
+        statusCode: p.statusCode,
+        redirectUrl: p.redirectUrl,
+        timestamp: new Date(),
+      })),
     });
 
     // Save state to disk
     await this.stateManager.saveState();
     await this.stateManager.saveBrokenLinks();
     await this.stateManager.saveLinkRelations();
+    await this.stateManager.saveRedirectedPages();
 
     return siteMap;
   }
@@ -637,10 +709,68 @@ export class SiteScanner {
             ? buildBrowserHeaders(this.config.userAgent)
             : buildMinimalHeaders(this.config.userAgent);
 
+          // Configure axios to NOT follow redirects automatically so we can detect them
           const response = await axios.get(url, {
             timeout: this.config.requestTimeout,
             headers,
+            maxRedirects: 0, // Don't follow redirects
+            validateStatus: (status) => status < 500, // Accept all status codes < 500 as valid
           });
+
+          // Check for redirect status codes (3xx)
+          if (response.status >= 300 && response.status < 400) {
+            const redirectUrl = response.headers['location'];
+            logger.info(
+              `↪ Redirect detected: ${url} -> ${redirectUrl || 'unknown'} (${response.status})`
+            );
+
+            // Track the redirect but don't save content
+            if (redirectUrl) {
+              // Resolve relative redirect URLs
+              let absoluteRedirectUrl = redirectUrl;
+              try {
+                if (!redirectUrl.startsWith('http')) {
+                  const baseUrlForResolution = url.endsWith('/') ? url : url + '/';
+                  absoluteRedirectUrl = new URL(redirectUrl, baseUrlForResolution).toString();
+                }
+
+                // Add to redirected pages list
+                this.redirectedPages.push({
+                  url: normalized,
+                  statusCode: response.status,
+                  redirectUrl: decodeUrl(absoluteRedirectUrl), // Store decoded URL for readability
+                });
+
+                // Mark that we have changes to save
+                this.hasChangesSinceLastSave = true;
+
+                // Save redirected pages immediately to prevent data loss
+                await this.saveRedirectedPages();
+
+                // Mark as visited so we don't process again
+                this.visitedUrls.add(normalized);
+
+                // If the redirect target is internal and not visited, add it to queue
+                if (isSameDomain(absoluteRedirectUrl, this.config.siteUrl)) {
+                  const normalizedRedirect = normalizeUrl(decodeUrl(absoluteRedirectUrl));
+                  if (
+                    !this.visitedUrls.has(normalizedRedirect) &&
+                    !isUrlExcluded(normalizedRedirect, this.config.exclude, this.config)
+                  ) {
+                    queue.push(absoluteRedirectUrl);
+                    logger.debug(`Added redirect target to queue: ${absoluteRedirectUrl}`);
+                  }
+                }
+              } catch (error) {
+                logger.warn(
+                  `Failed to process redirect for ${url}: ${error instanceof Error ? error.message : String(error)}`
+                );
+              }
+            }
+
+            // Skip further processing - don't save content or extract links
+            continue;
+          }
 
           // Check Content-Type header to ensure it's HTML
           const contentType = response.headers['content-type'];
@@ -919,7 +1049,7 @@ export class SiteScanner {
       );
     }
 
-    this.saveBrokenLinks();
+    await this.saveBrokenLinks();
 
     // Save external links in YAML format
     if (this.externalLinks.size > 0) {
@@ -929,6 +1059,9 @@ export class SiteScanner {
         `External links saved to ${externalLinksPath} (${this.externalLinks.size} links)`
       );
     }
+
+    // Save redirected pages
+    await this.saveRedirectedPages();
 
     logger.info('About to process link relations...');
 
@@ -1022,6 +1155,22 @@ export class SiteScanner {
       if (error instanceof Error && error.stack) {
         logger.error(error.stack);
       }
+    }
+  }
+
+  /**
+   * Public method to gracefully shutdown and save all results
+   * This can be called when receiving SIGINT (Ctrl-C) or other termination signals
+   */
+  async shutdown(): Promise<void> {
+    logger.info('Shutdown signal received, saving final results...');
+    try {
+      await this.saveFinalResults();
+      logger.info('Final results saved successfully before shutdown');
+    } catch (error) {
+      logger.error(
+        `Failed to save results during shutdown: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 }

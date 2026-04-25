@@ -10,6 +10,9 @@ import { configureLogger as configureUrlExcluderLogger } from '@/lib/url-exclude
 import { Logger } from '@/lib/logger';
 
 async function main() {
+  let scanner: SiteScanner | null = null;
+  let isShuttingDown = false;
+
   try {
     // Load and validate configuration
     const config = await loadConfig();
@@ -39,8 +42,32 @@ async function main() {
     const stateManager = new StateManager(config);
     await stateManager.initialize();
 
-    // Create scanner and run
-    const scanner = new SiteScanner(config, delayManager, stateManager);
+    // Create scanner
+    scanner = new SiteScanner(config, delayManager, stateManager);
+
+    // Setup graceful shutdown handler for Ctrl-C (SIGINT)
+    const handleShutdown = async (signal: string) => {
+      if (isShuttingDown) {
+        logger.warn('Already shutting down, please wait...');
+        return;
+      }
+
+      isShuttingDown = true;
+      logger.info(`\nReceived ${signal} signal, initiating graceful shutdown...`);
+
+      if (scanner) {
+        await scanner.shutdown();
+      }
+
+      logger.info('Shutdown complete');
+      process.exit(0);
+    };
+
+    // Listen for termination signals
+    process.on('SIGINT', () => handleShutdown('SIGINT')); // Ctrl-C
+    process.on('SIGTERM', () => handleShutdown('SIGTERM')); // Kill command
+
+    // Run the scan
     const siteMap = await scanner.scan();
 
     logger.info(`=== Scan Complete: ${siteMap.urls.length} pages found ===`);

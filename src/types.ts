@@ -69,6 +69,17 @@ export interface CrawlState {
   linkRelations: LinkRelation[]; // Track which pages link to which
   lastProcessed: Date;
   crawledPages: string[]; // URLs of pages that have been successfully crawled and saved
+  redirectedPages: RedirectedPage[]; // Pages that returned redirect status codes
+}
+
+/**
+ * Represents a page that returned a redirect status code
+ */
+export interface RedirectedPage {
+  url: string; // The original URL that was requested
+  statusCode: number; // The redirect status code (301, 302, etc.)
+  redirectUrl: string; // The URL it redirects to
+  timestamp: Date; // When the redirect was detected
 }
 
 export interface RobotsTxt {

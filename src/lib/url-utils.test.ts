@@ -1,6 +1,13 @@
 // src/lib/url-utils.test.ts
 
-import { decodeUrl, normalizeUrl, isValidUrl, urlToFilePath, getDomain, isSameDomain } from './url-utils';
+import {
+  decodeUrl,
+  normalizeUrl,
+  isValidUrl,
+  urlToFilePath,
+  getDomain,
+  isSameDomain,
+} from './url-utils';
 import * as path from 'path';
 
 describe('URL Utils', () => {
@@ -28,14 +35,16 @@ describe('URL Utils', () => {
   });
 
   describe('normalizeUrl', () => {
-    test('should remove trailing slashes except for root', () => {
-      expect(normalizeUrl('http://example.com/tags/')).toBe('http://example.com/tags');
+    test('should not remove trailing slashes', () => {
+      expect(normalizeUrl('http://example.com/tags/')).toBe('http://example.com/tags/');
       expect(normalizeUrl('http://example.com/')).toBe('http://example.com/');
     });
 
     test('should clean up double slashes in pathname', () => {
-      expect(normalizeUrl('http://example.com/tags//')).toBe('http://example.com/tags');
-      expect(normalizeUrl('http://example.com/path//to///page')).toBe('http://example.com/path/to/page');
+      expect(normalizeUrl('http://example.com/tags//')).toBe('http://example.com/tags/');
+      expect(normalizeUrl('http://example.com/path//to///page')).toBe(
+        'http://example.com/path/to/page'
+      );
     });
 
     test('should preserve protocol and host', () => {
@@ -83,7 +92,11 @@ describe('URL Utils', () => {
     });
 
     test('should decode Cyrillic characters in path', () => {
-      const result = urlToFilePath('http://example.com/%D1%82%D0%B5%D1%81%D1%82', 'http://example.com', '/dest');
+      const result = urlToFilePath(
+        'http://example.com/%D1%82%D0%B5%D1%81%D1%82',
+        'http://example.com',
+        '/dest'
+      );
       expect(result).toContain('тест.html');
     });
   });
